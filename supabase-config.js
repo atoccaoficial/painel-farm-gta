@@ -1,4 +1,4 @@
 window.SUPABASE_CONFIG = {
-  url: "COLE_AQUI_SUA_SUPABASE_URL",
-  anonKey: "COLE_AQUI_SUA_SUPABASE_ANON_KEY",
+  url: "https://leypzjulxskqhxzuijjb.supabase.co",
+  anonKey: "sb_publishable_KFdDoU5eXIwtU5wAIK_M0g_qVKqs",
 };
