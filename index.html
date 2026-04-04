@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Farm - Familia GTA RP</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">PF</div>
+        <div>
+          <p class="eyebrow">Sistema interno</p>
+          <h1>Painel de Farm</h1>
+          <span>Familia GTA RP</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="sidebar-label">Status do dia</p>
+        <div class="day-card">
+          <strong id="currentDateLabel">--</strong>
+          <span id="currentDayMode">--</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="sidebar-label">Resumo rapido</p>
+        <div class="sidebar-metrics">
+          <article>
+            <span>Entregas hoje</span>
+            <strong id="sidebarDelivered">0</strong>
+          </article>
+          <article>
+            <span>Pendencias</span>
+            <strong id="sidebarPending">0</strong>
+          </article>
+          <article>
+            <span>Farm semanal</span>
+            <strong id="sidebarWeeklyTotal">0</strong>
+          </article>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <p class="sidebar-label">Membros monitorados</p>
+        <div id="memberListSidebar" class="member-pills"></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Controle diario, semanal e historico</p>
+          <h2>Dashboard administrativo de farm</h2>
+          <span class="subtle">Registro com comprovante obrigatorio, status automatico e ranking semanal em tempo real.</span>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="exportButton" class="btn btn-secondary" type="button">Exportar dados</button>
+          <button id="resetButton" class="btn btn-primary" type="button">Limpar registros</button>
+        </div>
+      </header>
+
+      <section class="hero-grid">
+        <article class="hero-card accent">
+          <span class="card-label">Obrigatoriedade</span>
+          <strong id="heroObligation">Obrigatorio</strong>
+          <p id="heroObligationDescription">Segunda a sexta exige entrega registrada.</p>
+        </article>
+        <article class="hero-card">
+          <span class="card-label">Dinheiro sujo hoje</span>
+          <strong id="heroDirtyMoney">R$ 0,00</strong>
+          <p>Total arrecadado nos registros do dia.</p>
+        </article>
+        <article class="hero-card">
+          <span class="card-label">Materiais recebidos hoje</span>
+          <strong id="heroMaterialsReceived">0</strong>
+          <p>Soma dos materiais informados nas entregas.</p>
+        </article>
+        <article class="hero-card">
+          <span class="card-label">Melhor colocacao</span>
+          <strong id="heroTopMember">Sem entregas</strong>
+          <p id="heroTopMemberDescription">O ranking semanal sera atualizado automaticamente.</p>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <section class="card form-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Registro operacional</p>
+              <h3>Registrar entrega de farm</h3>
+            </div>
+            <span class="badge badge-danger">Print obrigatorio</span>
+          </div>
+
+          <form id="farmForm" class="farm-form">
+            <label>
+              Nome do membro
+              <select id="memberName" name="memberName" required></select>
+            </label>
+
+            <label>
+              Tipo de farm
+              <select id="farmType" name="farmType" required>
+                <option value="">Selecione</option>
+                <option value="Armas">Armas</option>
+                <option value="Drogas">Drogas</option>
+                <option value="Municao">Municao</option>
+                <option value="Lavagem">Lavagem</option>
+                <option value="Outros">Outros</option>
+              </select>
+            </label>
+
+            <label>
+              Materiais recebidos
+              <input id="materialsReceived" name="materialsReceived" type="number" min="1" step="1" value="200" required />
+            </label>
+
+            <label>
+              Dinheiro sujo arrecadado
+              <input id="dirtyMoney" name="dirtyMoney" type="number" min="0" step="0.01" placeholder="0,00" required />
+            </label>
+
+            <label>
+              Materiais restantes
+              <input id="materialsRemaining" name="materialsRemaining" type="number" min="0" step="1" placeholder="0" required />
+            </label>
+
+            <label class="file-field">
+              Print do bau
+              <input id="chestPrint" name="chestPrint" type="file" accept="image/*" required />
+              <span id="fileStatus" class="file-status">Nenhum arquivo selecionado</span>
+            </label>
+
+            <div class="inline-readonly">
+              <article>
+                <span>Data automatica</span>
+                <strong id="autoDateField">--</strong>
+              </article>
+              <article>
+                <span>Status automatico</span>
+                <strong class="success-text">Entregue</strong>
+              </article>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Salvar entrega</button>
+              <button id="clearFormButton" class="btn btn-ghost" type="button">Limpar formulario</button>
+            </div>
+          </form>
+
+          <div id="formMessage" class="toast-message" aria-live="polite"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Controle do dia</p>
+              <h3>Status automatico dos membros</h3>
+            </div>
+            <span id="requiredTag" class="badge">--</span>
+          </div>
+
+          <div class="table-wrapper compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Membro</th>
+                  <th>Status</th>
+                  <th>Farm</th>
+                  <th>Data</th>
+                </tr>
+              </thead>
+              <tbody id="dailyStatusTable"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="content-grid">
+        <section class="card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Painel administrador</p>
+              <h3>Entregas registradas</h3>
+            </div>
+            <span class="badge badge-success">Atualizacao em tempo real</span>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Farm</th>
+                  <th>Dinheiro</th>
+                  <th>Materiais restantes</th>
+                  <th>Print do bau</th>
+                  <th>Status</th>
+                  <th>Data</th>
+                </tr>
+              </thead>
+              <tbody id="recordsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="stack-grid">
+          <section class="card">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Ranking semanal</p>
+                <h3>Quem mais entregou</h3>
+              </div>
+            </div>
+
+            <div id="rankingList" class="ranking-list"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Leitura da semana</p>
+                <h3>Indicadores consolidados</h3>
+              </div>
+            </div>
+
+            <div id="weeklyInsights" class="insights-list"></div>
+          </section>
+        </section>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Historico semanal</p>
+            <h3>Semanas arquivadas automaticamente</h3>
+          </div>
+          <span class="badge badge-neutral">Reset logico diario com memoria semanal</span>
+        </div>
+
+        <div id="historyGrid" class="history-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="imageModal" class="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="true"></div>
+    <div class="modal-dialog">
+      <button id="closeModalButton" class="modal-close" type="button" aria-label="Fechar visualizacao">x</button>
+      <img id="modalImage" src="" alt="Print do bau ampliado" />
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
