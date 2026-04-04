@@ -1,20 +1,26 @@
-const STORAGE_KEY = "painel-fazenda-gta-rp-v2";
+const STORAGE_KEY = "painel-fazenda-gta";
+const SESSION_KEY = `${STORAGE_KEY}:sessionUserId`;
+const LEGACY_STORAGE_KEYS = ["painel-farm-gta-rp", "painel-fazenda-gta-rp-v2"];
 const DEFAULT_ADMIN = {
-  id: "seed-admin",
-  name: "Administrador",
-  username: "admin",
-  password: "123456",
-  role: "admin",
-  createdAt: new Date().toISOString(),
+  nome: "Administrador",
+  usuario: "admin",
+  senha: "123456",
+  tipo: "admin",
 };
 
-const state = loadState();
+const state = {
+  supabase: null,
+  users: [],
+  records: [],
+  currentUser: null,
+  isConfigured: false,
+  loading: false,
+};
 
 const els = {
   authView: document.getElementById("authView"),
   appView: document.getElementById("appView"),
   adminSection: document.getElementById("adminSection"),
-  memberHistorySection: document.getElementById("memberHistorySection"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
@@ -75,66 +81,53 @@ const els = {
 
 initialize();
 
-function initialize() {
-  runMaintenance();
+async function initialize() {
   bindEvents();
+  migrateLegacyBrowserStorage();
+  setupSupabase();
+
+  if (!state.isConfigured) {
+    showMessage(
+      els.loginMessage,
+      "Configure o arquivo supabase-config.js com a URL e a chave anon do seu projeto.",
+      "error",
+    );
+    renderApp();
+    return;
+  }
+
+  try {
+    await ensureDefaultAdmin();
+    await restoreSession();
+    await refreshData();
+  } catch (error) {
+    console.error(error);
+    showMessage(els.loginMessage, getErrorMessage(error), "error");
+  }
+
   renderApp();
 }
 
-function loadState() {
-  const fallback = {
-    users: [DEFAULT_ADMIN],
-    records: [],
-    sessionUserId: "",
-    metadata: {
-      initializedAt: new Date().toISOString(),
-      lastActiveDate: "",
-    },
-  };
-
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!saved || typeof saved !== "object") return fallback;
-
-    return {
-      users: Array.isArray(saved.users) && saved.users.length ? saved.users : [DEFAULT_ADMIN],
-      records: Array.isArray(saved.records) ? saved.records : [],
-      sessionUserId: typeof saved.sessionUserId === "string" ? saved.sessionUserId : "",
-      metadata: saved.metadata && typeof saved.metadata === "object"
-        ? saved.metadata
-        : fallback.metadata,
-    };
-  } catch (error) {
-    console.error("Falha ao carregar dados do sistema:", error);
-    return fallback;
-  }
+function migrateLegacyBrowserStorage() {
+  LEGACY_STORAGE_KEYS.forEach((legacyKey) => {
+    try {
+      localStorage.removeItem(legacyKey);
+      sessionStorage.removeItem(legacyKey);
+    } catch (error) {
+      console.error("Falha ao limpar chave legada:", legacyKey, error);
+    }
+  });
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
+function setupSupabase() {
+  const config = window.SUPABASE_CONFIG || {};
+  const url = String(config.url || "").trim();
+  const anonKey = String(config.anonKey || "").trim();
 
-function runMaintenance() {
-  ensureSeedAdmin();
-  removeRecordsWithoutUsers();
-  state.metadata.lastActiveDate = getDateKey();
-  saveState();
-}
+  state.isConfigured = Boolean(url && anonKey);
+  if (!state.isConfigured) return;
 
-function ensureSeedAdmin() {
-  const hasAdmin = state.users.some((user) => user.role === "admin");
-  if (!hasAdmin) {
-    state.users.unshift({
-      ...DEFAULT_ADMIN,
-      id: cryptoSafeId("admin"),
-      createdAt: new Date().toISOString(),
-    });
-  }
-}
-
-function removeRecordsWithoutUsers() {
-  const validIds = new Set(state.users.map((user) => user.id));
-  state.records = state.records.filter((record) => validIds.has(record.userId));
+  state.supabase = { url, anonKey };
 }
 
 function bindEvents() {
@@ -158,48 +151,70 @@ function bindEvents() {
     if (event.key === "Escape") closeModal();
   });
 
-  window.setInterval(() => {
-    runMaintenance();
-    renderApp();
+  window.setInterval(async () => {
+    if (!state.currentUser || state.loading) return;
+    try {
+      await refreshData();
+      renderApp();
+    } catch (error) {
+      console.error(error);
+    }
   }, 60000);
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   clearMessage(els.loginMessage);
 
-  const username = els.loginUsername.value.trim().toLowerCase();
-  const password = els.loginPassword.value.trim();
-  const user = state.users.find(
-    (item) => item.username.toLowerCase() === username && item.password === password,
-  );
-
-  if (!user) {
-    showMessage(els.loginMessage, "Usuario ou senha invalidos.", "error");
+  if (!state.isConfigured) {
+    showMessage(els.loginMessage, "Supabase nao configurado.", "error");
     return;
   }
 
-  state.sessionUserId = user.id;
-  saveState();
-  els.loginForm.reset();
-  renderApp();
+  const usuario = els.loginUsername.value.trim().toLowerCase();
+  const senha = els.loginPassword.value.trim();
+
+  if (!usuario || !senha) {
+    showMessage(els.loginMessage, "Informe usuario e senha.", "error");
+    return;
+  }
+
+  try {
+    setLoading(true);
+    const user = await loginUser(usuario, senha);
+
+    if (!user) {
+      showMessage(els.loginMessage, "Usuario ou senha invalidos.", "error");
+      return;
+    }
+
+    state.currentUser = user;
+    sessionStorage.setItem(SESSION_KEY, user.id);
+    els.loginForm.reset();
+    await refreshData();
+    renderApp();
+  } catch (error) {
+    console.error(error);
+    showMessage(els.loginMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function handleFarmSubmit(event) {
   event.preventDefault();
   clearMessage(els.farmMessage);
 
-  const user = getCurrentUser();
-  if (!user) {
+  if (!state.currentUser) {
     logout();
     return;
   }
 
   const payload = {
-    farmType: els.farmType.value.trim(),
-    materialsReceived: Number(els.materialsReceived.value),
-    dirtyMoney: Number(els.dirtyMoney.value),
-    materialsRemaining: Number(els.materialsRemaining.value),
+    farm: els.farmType.value.trim(),
+    materiais: Number(els.materialsReceived.value),
+    dinheiro: Number(els.dirtyMoney.value),
+    restantes: Number(els.materialsRemaining.value),
     file: els.chestPrint.files[0],
   };
 
@@ -210,55 +225,49 @@ async function handleFarmSubmit(event) {
   }
 
   try {
-    const now = new Date();
-    const imageData = await fileToDataUrl(payload.file);
-    const dateKey = getDateKey(now);
-    const recordId = getRecordIdForDate(user.id, dateKey);
-    const newRecord = {
-      id: recordId || cryptoSafeId("record"),
-      userId: user.id,
-      memberName: user.name,
-      farmType: payload.farmType,
-      materialsReceived: payload.materialsReceived,
-      dirtyMoney: payload.dirtyMoney,
-      materialsRemaining: payload.materialsRemaining,
-      imageData,
+    setLoading(true);
+    const printValue = await fileToDataUrl(payload.file);
+    const todayKey = getDateKey();
+    const existingRecord = state.records.find(
+      (record) => String(record.usuario) === String(state.currentUser.id) && toDateKey(record.data) === todayKey,
+    );
+
+    const recordPayload = {
+      usuario: state.currentUser.id,
+      farm: payload.farm,
+      materiais: payload.materiais,
+      dinheiro: payload.dinheiro,
+      restantes: payload.restantes,
+      print: printValue,
+      data: new Date().toISOString(),
       status: "Entregue",
-      dateKey,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
     };
 
-    const existingIndex = state.records.findIndex((record) => record.id === recordId);
-    if (existingIndex >= 0) {
-      state.records[existingIndex] = newRecord;
-      showMessage(els.farmMessage, "Entrega atualizada com sucesso.", "success");
-    } else {
-      state.records.push(newRecord);
-      showMessage(els.farmMessage, "Entrega registrada com sucesso.", "success");
-    }
-
-    saveState();
+    await saveFarmRecord(existingRecord?.id, recordPayload);
+    await refreshData();
     resetFarmForm();
+    showMessage(els.farmMessage, existingRecord ? "Entrega atualizada com sucesso." : "Entrega registrada com sucesso.", "success");
     renderApp();
   } catch (error) {
     console.error(error);
-    showMessage(els.farmMessage, "Nao foi possivel processar a imagem enviada.", "error");
+    showMessage(els.farmMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
   }
 }
 
-function handleMemberSubmit(event) {
+async function handleMemberSubmit(event) {
   event.preventDefault();
-  if (!isAdmin()) return;
-
   clearMessage(els.memberMessage);
+
+  if (!isAdmin()) return;
 
   const editingId = els.memberId.value.trim();
   const payload = {
-    name: els.memberName.value.trim(),
-    username: els.memberUsername.value.trim(),
-    password: els.memberPassword.value.trim(),
-    role: els.memberRole.value,
+    nome: els.memberName.value.trim(),
+    usuario: els.memberUsername.value.trim().toLowerCase(),
+    senha: els.memberPassword.value.trim(),
+    tipo: els.memberRole.value,
   };
 
   const validationError = validateMemberPayload(payload, editingId);
@@ -267,79 +276,74 @@ function handleMemberSubmit(event) {
     return;
   }
 
-  if (editingId) {
-    const user = state.users.find((item) => item.id === editingId);
-    if (!user) {
-      showMessage(els.memberMessage, "Membro nao encontrado para edicao.", "error");
-      return;
-    }
-
-    user.name = payload.name;
-    user.username = payload.username;
-    user.password = payload.password;
-    user.role = payload.role;
-    syncRecordNames(user.id, user.name);
-    showMessage(els.memberMessage, "Membro atualizado com sucesso.", "success");
-  } else {
-    state.users.push({
-      id: cryptoSafeId("user"),
-      name: payload.name,
-      username: payload.username,
-      password: payload.password,
-      role: payload.role,
-      createdAt: new Date().toISOString(),
-    });
-    showMessage(els.memberMessage, "Membro cadastrado com sucesso.", "success");
+  try {
+    setLoading(true);
+    await saveMember(editingId, payload);
+    await refreshData();
+    resetMemberForm();
+    showMessage(
+      els.memberMessage,
+      editingId ? "Membro atualizado com sucesso." : "Membro cadastrado com sucesso.",
+      "success",
+    );
+    renderApp();
+  } catch (error) {
+    console.error(error);
+    showMessage(els.memberMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
   }
-
-  saveState();
-  resetMemberForm();
-  renderApp();
 }
 
-function handleMemberActions(event) {
+async function handleMemberActions(event) {
   if (!isAdmin()) return;
 
   const actionButton = event.target.closest("[data-action]");
   if (!actionButton) return;
 
-  const action = actionButton.dataset.action;
   const userId = actionButton.dataset.userId;
-  const user = state.users.find((item) => item.id === userId);
+  const user = state.users.find((item) => String(item.id) === String(userId));
   if (!user) return;
 
-  if (action === "edit") {
+  if (actionButton.dataset.action === "edit") {
     els.memberId.value = user.id;
-    els.memberName.value = user.name;
-    els.memberUsername.value = user.username;
-    els.memberPassword.value = user.password;
-    els.memberRole.value = user.role;
-    els.memberFormMode.textContent = `Editando ${user.name}`;
+    els.memberName.value = user.nome;
+    els.memberUsername.value = user.usuario;
+    els.memberPassword.value = user.senha;
+    els.memberRole.value = user.tipo;
+    els.memberFormMode.textContent = `Editando ${user.nome}`;
     clearMessage(els.memberMessage);
     return;
   }
 
-  if (action === "delete") {
-    if (user.id === getCurrentUser()?.id) {
+  if (actionButton.dataset.action === "delete") {
+    if (String(user.id) === String(state.currentUser?.id)) {
       showMessage(els.memberMessage, "Nao e permitido excluir a conta em uso.", "error");
       return;
     }
 
-    const adminCount = state.users.filter((item) => item.role === "admin").length;
-    if (user.role === "admin" && adminCount <= 1) {
+    const adminCount = state.users.filter((item) => item.tipo === "admin").length;
+    if (user.tipo === "admin" && adminCount <= 1) {
       showMessage(els.memberMessage, "Mantenha pelo menos um administrador ativo.", "error");
       return;
     }
 
-    const confirmed = window.confirm(`Excluir o membro ${user.name} e todos os registros dele?`);
+    const confirmed = window.confirm(`Excluir o membro ${user.nome} e os registros dele?`);
     if (!confirmed) return;
 
-    state.users = state.users.filter((item) => item.id !== user.id);
-    state.records = state.records.filter((record) => record.userId !== user.id);
-    saveState();
-    resetMemberForm();
-    showMessage(els.memberMessage, "Membro excluido com sucesso.", "success");
-    renderApp();
+    try {
+      setLoading(true);
+      await deleteMember(user.id);
+      await refreshData();
+      resetMemberForm();
+      showMessage(els.memberMessage, "Membro excluido com sucesso.", "success");
+      renderApp();
+    } catch (error) {
+      console.error(error);
+      showMessage(els.memberMessage, getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
   }
 }
 
@@ -354,21 +358,42 @@ function handleFileLabel() {
   els.fileLabel.textContent = file ? file.name : "Nenhum arquivo selecionado";
 }
 
+async function restoreSession() {
+  const sessionUserId = sessionStorage.getItem(SESSION_KEY);
+  if (!sessionUserId) return;
+
+  const user = await getUserById(sessionUserId);
+  if (user) {
+    state.currentUser = user;
+  } else {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+}
+
+async function refreshData() {
+  const [users, records] = await Promise.all([fetchUsers(), fetchRecords()]);
+  state.users = users;
+  state.records = records;
+
+  if (state.currentUser) {
+    state.currentUser = state.users.find((user) => String(user.id) === String(state.currentUser.id)) || null;
+  }
+}
+
 function renderApp() {
-  const user = getCurrentUser();
-  const loggedIn = Boolean(user);
+  const loggedIn = Boolean(state.currentUser);
 
   els.authView.classList.toggle("hidden", loggedIn);
   els.appView.classList.toggle("hidden", !loggedIn);
 
   if (!loggedIn) return;
 
-  renderShell(user);
-  renderFarmForm(user);
+  renderShell(state.currentUser);
+  renderFarmForm(state.currentUser);
   renderDailyStatus();
-  renderMemberHistory(user);
+  renderMemberHistory(state.currentUser);
 
-  if (user.role === "admin") {
+  if (state.currentUser.tipo === "admin") {
     els.adminSection.classList.remove("hidden");
     renderAdminArea();
   } else {
@@ -383,19 +408,19 @@ function renderShell(user) {
   const ranking = computeRanking(weeklyRecords);
   const topMember = ranking.find((item) => item.deliveries > 0);
   const pending = getPendingMembers();
-  const memberDeliveredToday = hasDeliveredToday(user.id);
+  const deliveredToday = hasDeliveredToday(user.id);
 
-  els.sidebarDateLabel.textContent = `${formatDate(today)} · ${capitalize(getWeekdayLabel(today))}`;
+  els.sidebarDateLabel.textContent = `${formatDate(today)} - ${capitalize(getWeekdayLabel(today))}`;
   els.sidebarModeLabel.textContent = isRequiredDay(today) ? "Meta obrigatoria" : "Meta opcional";
-  els.sidebarUserName.textContent = user.name;
-  els.sidebarUserRole.textContent = user.role === "admin" ? "Administrador" : "Membro";
-  els.pageTitle.textContent = user.role === "admin" ? "Painel Administrativo" : "Painel do Membro";
-  els.pageSubtitle.textContent = user.role === "admin"
-    ? "Visao completa de registros, ranking semanal, pendencias e gestao de membros."
-    : "Registre sua meta diaria, envie o print do bau e acompanhe seu proprio historico.";
+  els.sidebarUserName.textContent = user.nome;
+  els.sidebarUserRole.textContent = user.tipo === "admin" ? "Administrador" : "Membro";
+  els.pageTitle.textContent = user.tipo === "admin" ? "Painel Administrativo" : "Painel do Membro";
+  els.pageSubtitle.textContent = user.tipo === "admin"
+    ? "Usuarios e registros persistidos no banco Supabase com leitura centralizada."
+    : "Registre sua meta diaria, envie o print e acompanhe seu historico persistente.";
 
   els.requiredBadge.textContent = isRequiredDay(today) ? "Obrigatorio hoje" : "Opcional hoje";
-  els.deliveryBadge.textContent = memberDeliveredToday ? "Sua entrega esta registrada" : "Sua entrega ainda esta pendente";
+  els.deliveryBadge.textContent = deliveredToday ? "Sua entrega esta registrada" : "Sua entrega ainda esta pendente";
 
   els.miniDelivered.textContent = String(todayRecords.length);
   els.miniPending.textContent = String(pending.length);
@@ -403,14 +428,13 @@ function renderShell(user) {
 
   els.heroObligation.textContent = isRequiredDay(today) ? "Entrega obrigatoria" : "Entrega opcional";
   els.heroObligationDescription.textContent = isRequiredDay(today)
-    ? "Segunda a sexta todos os membros precisam registrar a meta do dia."
-    : "Sabado e domingo continuam contando no ranking, mas nao geram pendencia.";
-
-  els.heroDirtyMoney.textContent = formatMoney(sumBy(todayRecords, "dirtyMoney"));
+    ? "Segunda a sexta os membros precisam enviar a meta diaria no banco."
+    : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.";
+  els.heroDirtyMoney.textContent = formatMoney(sumBy(todayRecords, "dinheiro"));
   els.heroTopMember.textContent = topMember ? topMember.memberName : "Sem entregas";
   els.heroTopMemberDescription.textContent = topMember
-    ? `${topMember.deliveries} entrega(s) na semana atual.`
-    : "O ranking sera preenchido assim que os registros forem enviados.";
+    ? `${topMember.deliveries} entrega(s) registradas nesta semana.`
+    : "O ranking semanal sera preenchido quando houver registros.";
   els.heroMissedCount.textContent = String(pending.length);
   els.missingSummary.textContent = isRequiredDay(today)
     ? `${pending.length} pendencia(s) no dia`
@@ -418,7 +442,7 @@ function renderShell(user) {
 }
 
 function renderFarmForm(user) {
-  els.farmMemberName.value = user.name;
+  els.farmMemberName.value = user.nome;
   els.autoDate.textContent = formatDateTime(new Date());
 }
 
@@ -433,10 +457,10 @@ function renderDailyStatus() {
   els.dailyStatusBody.innerHTML = rows
     .map((row) => `
       <tr>
-        <td>${escapeHtml(row.name)}</td>
+        <td>${escapeHtml(row.nome)}</td>
         <td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td>
-        <td>${escapeHtml(row.farmType)}</td>
-        <td>${escapeHtml(row.dateLabel)}</td>
+        <td>${escapeHtml(row.farm)}</td>
+        <td>${escapeHtml(row.data)}</td>
       </tr>
     `)
     .join("");
@@ -444,10 +468,10 @@ function renderDailyStatus() {
 
 function renderMemberHistory(user) {
   const ownRecords = state.records
-    .filter((record) => record.userId === user.id)
-    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+    .filter((record) => String(record.usuario) === String(user.id))
+    .sort((left, right) => new Date(right.data).getTime() - new Date(left.data).getTime());
 
-  const weeklyCount = ownRecords.filter((record) => isSameWeek(record.dateKey, getWeekKey())).length;
+  const weeklyCount = ownRecords.filter((record) => isSameWeek(toDateKey(record.data), getWeekKey())).length;
   els.memberHistorySummary.textContent = `${weeklyCount} entrega(s) nesta semana`;
 
   if (!ownRecords.length) {
@@ -458,12 +482,12 @@ function renderMemberHistory(user) {
   els.memberHistoryBody.innerHTML = ownRecords
     .map((record) => `
       <tr>
-        <td>${escapeHtml(formatDateTime(new Date(record.updatedAt)))}</td>
-        <td>${escapeHtml(record.farmType)}</td>
-        <td>${escapeHtml(formatMoney(record.dirtyMoney))}</td>
-        <td>${escapeHtml(String(record.materialsRemaining))}</td>
+        <td>${escapeHtml(formatDateTime(new Date(record.data)))}</td>
+        <td>${escapeHtml(record.farm)}</td>
+        <td>${escapeHtml(formatMoney(record.dinheiro))}</td>
+        <td>${escapeHtml(String(record.restantes))}</td>
         <td>
-          <button class="thumb-button" type="button" data-image="${encodeURIComponent(record.imageData)}">
+          <button class="thumb-button" type="button" data-image="${encodeURIComponent(record.print)}">
             Ver print
           </button>
         </td>
@@ -482,9 +506,7 @@ function renderAdminArea() {
 }
 
 function renderAdminRecords() {
-  const records = [...state.records].sort(
-    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
-  );
+  const records = [...state.records].sort((left, right) => new Date(right.data).getTime() - new Date(left.data).getTime());
 
   if (!records.length) {
     els.recordsBody.innerHTML = emptyRow(7, "Nenhum registro encontrado.");
@@ -494,17 +516,17 @@ function renderAdminRecords() {
   els.recordsBody.innerHTML = records
     .map((record) => `
       <tr>
-        <td>${escapeHtml(record.memberName)}</td>
-        <td>${escapeHtml(record.farmType)}</td>
-        <td>${escapeHtml(formatMoney(record.dirtyMoney))}</td>
-        <td>${escapeHtml(String(record.materialsRemaining))}</td>
+        <td>${escapeHtml(getUserName(record.usuario))}</td>
+        <td>${escapeHtml(record.farm)}</td>
+        <td>${escapeHtml(formatMoney(record.dinheiro))}</td>
+        <td>${escapeHtml(String(record.restantes))}</td>
         <td>
-          <button class="thumb-button" type="button" data-image="${encodeURIComponent(record.imageData)}">
+          <button class="thumb-button" type="button" data-image="${encodeURIComponent(record.print)}">
             Ver print
           </button>
         </td>
         <td><span class="status-chip status-delivered">${escapeHtml(record.status)}</span></td>
-        <td>${escapeHtml(formatDateTime(new Date(record.updatedAt)))}</td>
+        <td>${escapeHtml(formatDateTime(new Date(record.data)))}</td>
       </tr>
     `)
     .join("");
@@ -521,7 +543,7 @@ function renderRanking() {
   els.rankingList.innerHTML = ranking
     .map((item, index) => `
       <article class="stack-item ranking-row">
-        <span class="ranking-position">${index + 1}º</span>
+        <span class="ranking-position">${index + 1}o</span>
         <div>
           <strong>${escapeHtml(item.memberName)}</strong>
           <p>${item.deliveries} entrega(s) registradas na semana atual.</p>
@@ -544,7 +566,7 @@ function renderMissingList() {
   els.missingList.innerHTML = missing
     .map((user) => `
       <article class="stack-item">
-        <strong>${escapeHtml(user.name)}</strong>
+        <strong>${escapeHtml(user.nome)}</strong>
         <p>${isRequiredDay() ? "Ainda nao registrou a meta do dia." : "Sem entrega registrada, mas hoje e opcional."}</p>
       </article>
     `)
@@ -552,15 +574,15 @@ function renderMissingList() {
 }
 
 function renderMembersTable() {
-  const users = [...state.users].sort((left, right) => left.name.localeCompare(right.name));
+  const users = [...state.users].sort((left, right) => left.nome.localeCompare(right.nome));
   els.memberCounter.textContent = `${users.length} membro(s)`;
 
   els.membersBody.innerHTML = users
     .map((user) => `
       <tr>
-        <td>${escapeHtml(user.name)}</td>
-        <td>${escapeHtml(user.username)}</td>
-        <td>${escapeHtml(user.role === "admin" ? "Admin" : "Membro")}</td>
+        <td>${escapeHtml(user.nome)}</td>
+        <td>${escapeHtml(user.usuario)}</td>
+        <td>${escapeHtml(user.tipo === "admin" ? "Admin" : "Membro")}</td>
         <td>
           <div class="action-row">
             <button class="action-button" type="button" data-action="edit" data-user-id="${user.id}">Editar</button>
@@ -592,17 +614,165 @@ function renderWeeklyArchive() {
     .join("");
 }
 
-function getCurrentUser() {
-  return state.users.find((user) => user.id === state.sessionUserId) || null;
+async function fetchUsers() {
+  return await supabaseSelect("usuarios", {
+    select: "id,nome,usuario,senha,tipo,data_criacao",
+    order: "nome.asc",
+  });
+}
+
+async function fetchRecords() {
+  return await supabaseSelect("registros", {
+    select: "id,usuario,farm,materiais,dinheiro,restantes,print,data,status",
+    order: "data.desc",
+  });
+}
+
+async function loginUser(usuario, senha) {
+  const rows = await supabaseSelect("usuarios", {
+    select: "id,nome,usuario,senha,tipo,data_criacao",
+    filters: {
+      usuario: `eq.${usuario}`,
+      senha: `eq.${senha}`,
+    },
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function getUserById(id) {
+  const rows = await supabaseSelect("usuarios", {
+    select: "id,nome,usuario,senha,tipo,data_criacao",
+    filters: { id: `eq.${id}` },
+    limit: 1,
+  });
+  return rows[0] || null;
+}
+
+async function saveMember(editingId, payload) {
+  if (editingId) {
+    await supabasePatch("usuarios", { id: `eq.${editingId}` }, {
+      nome: payload.nome,
+      usuario: payload.usuario,
+      senha: payload.senha,
+      tipo: payload.tipo,
+    });
+    return;
+  }
+
+  await supabaseInsert("usuarios", {
+    nome: payload.nome,
+    usuario: payload.usuario,
+    senha: payload.senha,
+    tipo: payload.tipo,
+  });
+}
+
+async function saveFarmRecord(existingId, payload) {
+  if (existingId) {
+    await supabasePatch("registros", { id: `eq.${existingId}` }, payload);
+    return;
+  }
+
+  await supabaseInsert("registros", payload);
+}
+
+async function deleteMember(userId) {
+  await supabaseDelete("registros", { usuario: `eq.${userId}` });
+  await supabaseDelete("usuarios", { id: `eq.${userId}` });
+}
+
+async function ensureDefaultAdmin() {
+  const users = await supabaseSelect("usuarios", {
+    select: "id",
+    limit: 1,
+  });
+  if (users.length > 0) return;
+  await supabaseInsert("usuarios", DEFAULT_ADMIN);
+}
+
+async function supabaseSelect(table, options = {}) {
+  const query = new URLSearchParams();
+  query.set("select", options.select || "*");
+
+  if (options.order) query.set("order", options.order);
+  if (options.limit) query.set("limit", String(options.limit));
+
+  Object.entries(options.filters || {}).forEach(([key, value]) => {
+    query.set(key, value);
+  });
+
+  return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, {
+    method: "GET",
+  });
+}
+
+async function supabaseInsert(table, payload) {
+  return await supabaseRequest(`/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function supabasePatch(table, filters, payload) {
+  const query = new URLSearchParams();
+  Object.entries(filters || {}).forEach(([key, value]) => {
+    query.set(key, value);
+  });
+
+  return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, {
+    method: "PATCH",
+    headers: {
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function supabaseDelete(table, filters) {
+  const query = new URLSearchParams();
+  Object.entries(filters || {}).forEach(([key, value]) => {
+    query.set(key, value);
+  });
+
+  return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, {
+    method: "DELETE",
+  });
+}
+
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(`${state.supabase.url}${path}`, {
+    method: options.method || "GET",
+    headers: {
+      apikey: state.supabase.anonKey,
+      Authorization: `Bearer ${state.supabase.anonKey}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Falha na comunicacao com o Supabase.");
+  }
+
+  if (response.status === 204) return [];
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : [];
 }
 
 function isAdmin() {
-  return getCurrentUser()?.role === "admin";
+  return state.currentUser?.tipo === "admin";
 }
 
 function logout() {
-  state.sessionUserId = "";
-  saveState();
+  state.currentUser = null;
+  sessionStorage.removeItem(SESSION_KEY);
   clearMessage(els.loginMessage);
   clearMessage(els.farmMessage);
   clearMessage(els.memberMessage);
@@ -620,63 +790,42 @@ function resetFarmForm() {
 function resetMemberForm() {
   els.memberForm.reset();
   els.memberId.value = "";
-  els.memberRole.value = "member";
+  els.memberRole.value = "membro";
   els.memberFormMode.textContent = "Novo cadastro";
 }
 
 function validateFarmPayload(payload) {
-  if (!payload.farmType) return "Selecione o tipo de farm.";
-  if (!Number.isFinite(payload.materialsReceived) || payload.materialsReceived <= 0) {
-    return "Informe os materiais recebidos corretamente.";
-  }
-  if (!Number.isFinite(payload.dirtyMoney) || payload.dirtyMoney < 0) {
-    return "Informe o valor do dinheiro sujo.";
-  }
-  if (!Number.isFinite(payload.materialsRemaining) || payload.materialsRemaining < 0) {
-    return "Informe os materiais restantes corretamente.";
-  }
+  if (!payload.farm) return "Selecione o tipo de farm.";
+  if (!Number.isFinite(payload.materiais) || payload.materiais <= 0) return "Informe os materiais corretamente.";
+  if (!Number.isFinite(payload.dinheiro) || payload.dinheiro < 0) return "Informe o dinheiro corretamente.";
+  if (!Number.isFinite(payload.restantes) || payload.restantes < 0) return "Informe os restantes corretamente.";
   if (!payload.file) return "O print do bau e obrigatorio.";
-  if (!payload.file.type.startsWith("image/")) return "Envie uma imagem valida para o print.";
+  if (!payload.file.type.startsWith("image/")) return "Envie um arquivo de imagem valido.";
   return "";
 }
 
 function validateMemberPayload(payload, editingId) {
-  if (!payload.name) return "Informe o nome do membro.";
-  if (!payload.username) return "Informe o usuario da conta.";
-  if (!payload.password) return "Informe a senha da conta.";
-  if (!payload.role) return "Selecione o tipo de conta.";
+  if (!payload.nome) return "Informe o nome do membro.";
+  if (!payload.usuario) return "Informe o usuario da conta.";
+  if (!payload.senha) return "Informe a senha da conta.";
+  if (!payload.tipo) return "Selecione o tipo de conta.";
 
-  const usernameTaken = state.users.some(
-    (user) => user.username.toLowerCase() === payload.username.toLowerCase() && user.id !== editingId,
+  const duplicate = state.users.some(
+    (user) => user.usuario.toLowerCase() === payload.usuario.toLowerCase() && String(user.id) !== String(editingId),
   );
 
-  if (usernameTaken) return "Ja existe um membro usando esse usuario.";
+  if (duplicate) return "Ja existe um membro usando esse usuario.";
   return "";
-}
-
-function syncRecordNames(userId, newName) {
-  state.records.forEach((record) => {
-    if (record.userId === userId) record.memberName = newName;
-  });
-}
-
-function getRecordIdForDate(userId, dateKey) {
-  return state.records.find((record) => record.userId === userId && record.dateKey === dateKey)?.id || "";
-}
-
-function hasDeliveredToday(userId) {
-  const todayKey = getDateKey();
-  return state.records.some((record) => record.userId === userId && record.dateKey === todayKey);
 }
 
 function getTodayRecords() {
   const todayKey = getDateKey();
-  return state.records.filter((record) => record.dateKey === todayKey);
+  return state.records.filter((record) => toDateKey(record.data) === todayKey);
 }
 
 function getCurrentWeekRecords() {
   const currentWeekKey = getWeekKey();
-  return state.records.filter((record) => isSameWeek(record.dateKey, currentWeekKey));
+  return state.records.filter((record) => isSameWeek(toDateKey(record.data), currentWeekKey));
 }
 
 function getPendingMembers() {
@@ -684,58 +833,70 @@ function getPendingMembers() {
 
   const todayKey = getDateKey();
   return state.users.filter((user) => {
-    if (user.role !== "member") return false;
-    return !state.records.some((record) => record.userId === user.id && record.dateKey === todayKey);
+    if (user.tipo !== "membro") return false;
+    return !state.records.some(
+      (record) => String(record.usuario) === String(user.id) && toDateKey(record.data) === todayKey,
+    );
   });
 }
 
+function hasDeliveredToday(userId) {
+  const todayKey = getDateKey();
+  return state.records.some(
+    (record) => String(record.usuario) === String(userId) && toDateKey(record.data) === todayKey,
+  );
+}
+
 function getDailyStatusRows() {
-  const dateLabel = formatDate(new Date());
+  const todayLabel = formatDate(new Date());
   return state.users
-    .filter((user) => user.role === "member")
-    .sort((left, right) => left.name.localeCompare(right.name))
+    .filter((user) => user.tipo === "membro")
+    .sort((left, right) => left.nome.localeCompare(right.nome))
     .map((user) => {
-      const record = state.records.find((item) => item.userId === user.id && item.dateKey === getDateKey());
+      const record = state.records.find(
+        (item) => String(item.usuario) === String(user.id) && toDateKey(item.data) === getDateKey(),
+      );
+
       if (record) {
         return {
-          name: user.name,
+          nome: user.nome,
           status: "Entregue",
           statusClass: "status-delivered",
-          farmType: record.farmType,
-          dateLabel: formatDateTime(new Date(record.updatedAt)),
+          farm: record.farm,
+          data: formatDateTime(new Date(record.data)),
         };
       }
 
       if (!isRequiredDay()) {
         return {
-          name: user.name,
+          nome: user.nome,
           status: "Opcional",
           statusClass: "status-optional",
-          farmType: "-",
-          dateLabel,
+          farm: "-",
+          data: todayLabel,
         };
       }
 
       return {
-        name: user.name,
+        nome: user.nome,
         status: "Nao entregou",
         statusClass: "status-missed",
-        farmType: "-",
-        dateLabel,
+        farm: "-",
+        data: todayLabel,
       };
     });
 }
 
 function computeRanking(records) {
-  const members = state.users.filter((user) => user.role === "member");
+  const members = state.users.filter((user) => user.tipo === "membro");
   const counter = members.map((user) => ({
     userId: user.id,
-    memberName: user.name,
+    memberName: user.nome,
     deliveries: 0,
   }));
 
   records.forEach((record) => {
-    const entry = counter.find((item) => item.userId === record.userId);
+    const entry = counter.find((item) => String(item.userId) === String(record.usuario));
     if (entry) entry.deliveries += 1;
   });
 
@@ -748,7 +909,7 @@ function buildWeeklyArchive() {
   const grouped = new Map();
 
   state.records.forEach((record) => {
-    const weekKey = getWeekKey(new Date(`${record.dateKey}T00:00:00`));
+    const weekKey = getWeekKey(new Date(record.data));
     if (!grouped.has(weekKey)) grouped.set(weekKey, []);
     grouped.get(weekKey).push(record);
   });
@@ -760,7 +921,7 @@ function buildWeeklyArchive() {
       return {
         weekKey,
         totalDeliveries: records.length,
-        totalDirtyMoney: sumBy(records, "dirtyMoney"),
+        totalDirtyMoney: sumBy(records, "dinheiro"),
         topMember: topMember ? `${topMember.memberName} (${topMember.deliveries})` : "Sem entregas",
       };
     })
@@ -784,6 +945,10 @@ function exportData() {
   URL.revokeObjectURL(url);
 }
 
+function getUserName(userId) {
+  return state.users.find((user) => String(user.id) === String(userId))?.nome || "Usuario removido";
+}
+
 function openModal(imageSrc) {
   els.modalImage.src = imageSrc;
   els.imageModal.classList.remove("hidden");
@@ -796,6 +961,26 @@ function closeModal() {
   els.imageModal.setAttribute("aria-hidden", "true");
 }
 
+function setLoading(isLoading) {
+  state.loading = isLoading;
+  const disabled = Boolean(isLoading);
+  [
+    els.loginUsername,
+    els.loginPassword,
+    els.farmType,
+    els.materialsReceived,
+    els.dirtyMoney,
+    els.materialsRemaining,
+    els.chestPrint,
+    els.memberName,
+    els.memberUsername,
+    els.memberPassword,
+    els.memberRole,
+  ].forEach((element) => {
+    if (element) element.disabled = disabled;
+  });
+}
+
 function showMessage(element, message, type) {
   element.textContent = message;
   element.className = `form-message ${type}`;
@@ -804,6 +989,10 @@ function showMessage(element, message, type) {
 function clearMessage(element) {
   element.textContent = "";
   element.className = "form-message";
+}
+
+function getErrorMessage(error) {
+  return error?.message || "Nao foi possivel concluir a operacao no banco.";
 }
 
 function fileToDataUrl(file) {
@@ -837,6 +1026,10 @@ function getDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function toDateKey(value) {
+  return getDateKey(new Date(value));
+}
+
 function getWeekKey(date = new Date()) {
   const current = new Date(date);
   const day = current.getDay();
@@ -865,13 +1058,6 @@ function formatWeekKey(weekKey) {
 
 function sumBy(items, field) {
   return items.reduce((total, item) => total + Number(item[field] || 0), 0);
-}
-
-function cryptoSafeId(prefix) {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function emptyRow(columns, message) {

@@ -1,111 +1,100 @@
 # Painel Fazenda GTA RP
 
-Sistema interno para controle de farm de uma familia GTA RP, com login individual, upload obrigatorio de print, ranking semanal, painel administrativo e acompanhamento automatico de metas.
+Sistema interno para controle de farm com persistencia real em Supabase, login individual, ranking semanal e painel administrativo.
 
 ## Tecnologias
 
 - HTML
 - CSS
 - JavaScript
-- localStorage
+- Supabase
 
-## Funcionalidades
+## O que foi corrigido
 
-- Login por usuario e senha
-- Perfis `Admin` e `Membro`
-- Registro de farm com:
-  - nome automatico pelo login
-  - tipo de farm
-  - materiais recebidos
-  - dinheiro sujo arrecadado
-  - materiais restantes
-  - print obrigatorio do bau
-  - data automatica
-  - status automatico
-- Controle automatico:
-  - segunda a sexta obrigatorio
-  - sabado e domingo opcional
-- Painel administrador para:
-  - ver todos os registros
-  - ver ranking semanal
-  - ver quem nao entregou
-  - cadastrar membros
-  - editar membros
-  - excluir membros
-- Painel do membro para:
-  - registrar farm
-  - enviar print
-  - ver historico proprio
-- Exportacao de backup em JSON
-- Layout escuro, moderno e responsivo
+- Usuarios agora sao salvos no banco
+- Login consulta o banco
+- Registros de farm sao persistidos no banco
+- Ranking semanal e calculado com dados do banco
+- Verificacao de quem nao entregou compara usuarios cadastrados com registros do dia
+- Chave de armazenamento local unificada em `painel-fazenda-gta`
+- Limpeza automatica das chaves legadas `painel-farm-gta-rp` e `painel-fazenda-gta-rp-v2`
+
+## Estrutura principal
+
+- [index.html](C:\Users\Windows\Documents\FARM\index.html)
+- [style.css](C:\Users\Windows\Documents\FARM\style.css)
+- [script.js](C:\Users\Windows\Documents\FARM\script.js)
+- [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js)
+- [supabase-config.example.js](C:\Users\Windows\Documents\FARM\supabase-config.example.js)
+- [supabase-schema.sql](C:\Users\Windows\Documents\FARM\supabase-schema.sql)
+
+## Tabelas do banco
+
+### `usuarios`
+
+- `id`
+- `nome`
+- `usuario`
+- `senha`
+- `tipo`
+- `data_criacao`
+
+### `registros`
+
+- `id`
+- `usuario`
+- `farm`
+- `materiais`
+- `dinheiro`
+- `restantes`
+- `print`
+- `data`
+- `status`
+
+## Como configurar o Supabase
+
+1. Crie um projeto no Supabase.
+2. Abra o SQL Editor.
+3. Execute o arquivo [supabase-schema.sql](C:\Users\Windows\Documents\FARM\supabase-schema.sql).
+4. Copie a URL do projeto e a chave anon.
+5. Edite [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js).
+
+Exemplo:
+
+```js
+window.SUPABASE_CONFIG = {
+  url: "https://seu-projeto.supabase.co",
+  anonKey: "sua-chave-anon-aqui",
+};
+```
 
 ## Conta inicial
 
-Ao abrir o sistema pela primeira vez, a conta padrao sera:
+Depois de executar o SQL inicial, a conta padrao sera:
 
 - Usuario: `admin`
 - Senha: `123456`
 
-Depois do login, o administrador pode cadastrar os demais membros no painel.
-
 ## Como usar
 
-1. Abra `index.html` no navegador.
-2. Entre com a conta `admin`.
-3. Cadastre os membros com nome, usuario, senha e tipo.
-4. Cada membro faz login com sua propria conta.
-5. O membro registra a entrega do dia e envia o print do bau.
-6. O administrador acompanha ranking, pendencias e historico semanal.
+1. Configure o Supabase.
+2. Abra [index.html](C:\Users\Windows\Documents\FARM\index.html) no navegador.
+3. Entre com `admin`.
+4. Cadastre os membros no painel administrativo.
+5. Cada membro faz login com seu proprio usuario.
+6. Os registros passam a ficar salvos permanentemente no banco.
 
-## Como cadastrar membros
+## Observacoes importantes
 
-1. Entre como administrador.
-2. Acesse a area `Gestao de membros`.
-3. Preencha:
-   - Nome
-   - Usuario
-   - Senha
-   - Tipo (`Admin` ou `Membro`)
-4. Clique em `Salvar membro`.
-
-## Regras do sistema
-
-- Cada usuario possui apenas um registro por dia.
-- Se o membro enviar novamente no mesmo dia, o registro anterior e atualizado.
-- O sistema compara membros cadastrados com os registros do dia para marcar:
-  - `Entregue`
-  - `Nao entregou`
-  - `Opcional`
-- O ranking semanal e recalculado automaticamente com base nas entregas da semana atual.
-- O reset diario e logico: ao mudar o dia, o painel comeca uma nova leitura diaria sem apagar o historico antigo.
-
-## Estrutura do projeto
-
-```text
-/
-|-- index.html
-|-- style.css
-|-- script.js
-|-- README.md
-`-- src/
-    |-- assets/
-    |   `-- README.md
-    |-- components/
-    |   `-- README.md
-    `-- pages/
-        `-- README.md
-```
+- O sistema continua sendo frontend estatico, mas os dados agora ficam no Supabase.
+- A sessao atual do usuario fica apenas no navegador para manter o login aberto, usando a chave unica `painel-fazenda-gta`.
+- O campo `print` esta sendo salvo no banco como `data URL` da imagem enviada.
+- O SQL ja inclui politicas RLS abertas para permitir o uso direto pelo navegador com chave `anon`.
+- As senhas estao sendo armazenadas em texto puro porque voce pediu a tabela exatamente com o campo `senha`. Em producao, o ideal e migrar isso para hash/autenticacao segura.
 
 ## Deploy na Vercel
 
-Como o projeto e estatico, basta:
-
-1. Enviar os arquivos para o GitHub.
-2. Importar o repositorio na Vercel.
-3. Definir o framework como `Other`.
-4. Publicar sem comando de build.
-
-## Observacoes
-
-- Os dados ficam salvos no `localStorage` do navegador.
-- Para usar em equipe com dados compartilhados entre varios usuarios, o proximo passo ideal e conectar um backend ou banco de dados real.
+1. Envie o projeto ao GitHub.
+2. Importe o repositorio na Vercel.
+3. Mantenha deploy estatico.
+4. Garanta que [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js) esteja com os dados corretos antes de publicar.

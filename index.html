@@ -33,8 +33,8 @@
             <span>Segunda a sexta obrigatorio, sabado e domingo opcional.</span>
           </article>
           <article class="glass-card">
-            <strong>Pronto para deploy</strong>
-            <span>Projeto estatico com `HTML`, `CSS`, `JavaScript` e `localStorage`.</span>
+            <strong>Banco permanente</strong>
+            <span>Projeto estatico com HTML, CSS, JavaScript e persistencia via Supabase.</span>
           </article>
         </div>
       </div>
@@ -43,7 +43,7 @@
         <div class="panel-header">
           <span class="eyebrow">Acesso seguro</span>
           <h2>Entrar no sistema</h2>
-          <p>Use o usuario e senha cadastrados pelo administrador.</p>
+          <p>Use o usuario e senha cadastrados no banco Supabase.</p>
         </div>
 
         <form id="loginForm" class="form-grid">
@@ -62,7 +62,7 @@
         </form>
 
         <div class="auth-footer">
-          <span class="badge badge-info">Conta inicial admin: admin / 123456</span>
+          <span class="badge badge-info">Configure `supabase-config.js` e rode o SQL inicial</span>
         </div>
       </section>
     </section>
@@ -353,7 +353,7 @@
                 <label>
                   Tipo
                   <select id="memberRole" required>
-                    <option value="member">Membro</option>
+                    <option value="membro">Membro</option>
                     <option value="admin">Admin</option>
                   </select>
                 </label>
@@ -415,6 +415,7 @@
     </div>
   </div>
 
+  <script src="supabase-config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
