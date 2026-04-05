@@ -1,4 +1,4 @@
-# Painel Fazenda GTA RP
+# Painel de Farm Carmesim's
 
 Sistema interno para controle de farm com persistencia real em Supabase, login individual, ranking semanal e painel administrativo.
 
