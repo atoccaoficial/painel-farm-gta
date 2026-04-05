@@ -441,9 +441,29 @@
                 </div>
                 <div class="section-heading-actions">
                   <span class="badge badge-success">Mesmos membros, nova aba</span>
-                  <button id="exportRouteLastMonthButton" class="btn btn-secondary" type="button">Excel ultimo mes</button>
-                  <button id="resetRouteMonthButton" class="btn btn-ghost" type="button">Limpar mes atual</button>
                 </div>
+              </div>
+
+              <div class="export-toolbar">
+                <label>
+                  De
+                  <input id="routeExportStart" type="date" />
+                </label>
+                <label>
+                  Ate
+                  <input id="routeExportEnd" type="date" />
+                </label>
+                <label>
+                  Membro
+                  <select id="routeExportMember">
+                    <option value="all">Todos os membros</option>
+                  </select>
+                </label>
+                <button id="exportRoutePeriodButton" class="btn btn-secondary" type="button">Exportar Excel</button>
+              </div>
+
+              <div class="danger-actions">
+                <button id="resetRouteMonthButton" class="btn btn-danger" type="button">Limpar historico</button>
               </div>
                 <div class="table-shell">
                   <table>
@@ -485,9 +505,29 @@
                 </div>
                 <div class="section-heading-actions">
                   <span class="badge badge-success">Visao completa</span>
-                  <button id="exportFarmLastMonthButton" class="btn btn-secondary" type="button">Excel ultimo mes</button>
-                  <button id="resetFarmMonthButton" class="btn btn-ghost" type="button">Limpar mes atual</button>
                 </div>
+              </div>
+
+              <div class="export-toolbar">
+                <label>
+                  De
+                  <input id="farmExportStart" type="date" />
+                </label>
+                <label>
+                  Ate
+                  <input id="farmExportEnd" type="date" />
+                </label>
+                <label>
+                  Membro
+                  <select id="farmExportMember">
+                    <option value="all">Todos os membros</option>
+                  </select>
+                </label>
+                <button id="exportFarmPeriodButton" class="btn btn-secondary" type="button">Exportar Excel</button>
+              </div>
+
+              <div class="danger-actions">
+                <button id="resetFarmMonthButton" class="btn btn-danger" type="button">Limpar historico</button>
               </div>
 
               <div class="table-shell">

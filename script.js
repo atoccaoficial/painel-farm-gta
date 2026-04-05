@@ -73,9 +73,15 @@ const els = {
   routeHistorySummary: document.getElementById("routeHistorySummary"),
   routeRecordsBody: document.getElementById("routeRecordsBody"),
   routeRankingList: document.getElementById("routeRankingList"),
-  exportFarmLastMonthButton: document.getElementById("exportFarmLastMonthButton"),
+  farmExportStart: document.getElementById("farmExportStart"),
+  farmExportEnd: document.getElementById("farmExportEnd"),
+  farmExportMember: document.getElementById("farmExportMember"),
+  exportFarmPeriodButton: document.getElementById("exportFarmPeriodButton"),
   resetFarmMonthButton: document.getElementById("resetFarmMonthButton"),
-  exportRouteLastMonthButton: document.getElementById("exportRouteLastMonthButton"),
+  routeExportStart: document.getElementById("routeExportStart"),
+  routeExportEnd: document.getElementById("routeExportEnd"),
+  routeExportMember: document.getElementById("routeExportMember"),
+  exportRoutePeriodButton: document.getElementById("exportRoutePeriodButton"),
   resetRouteMonthButton: document.getElementById("resetRouteMonthButton"),
   memberForm: document.getElementById("memberForm"),
   memberId: document.getElementById("memberId"),
@@ -130,9 +136,9 @@ function bindEvents() {
   els.memberHistoryBody.addEventListener("click", handleImageButtons);
   els.routeHistoryBody.addEventListener("click", handleImageButtons);
   els.routeRecordsBody.addEventListener("click", handleImageButtons);
-  els.exportFarmLastMonthButton.addEventListener("click", exportFarmLastMonthReport);
+  els.exportFarmPeriodButton.addEventListener("click", exportFarmPeriodReport);
   els.resetFarmMonthButton.addEventListener("click", resetFarmCurrentMonth);
-  els.exportRouteLastMonthButton.addEventListener("click", exportRouteLastMonthReport);
+  els.exportRoutePeriodButton.addEventListener("click", exportRoutePeriodReport);
   els.resetRouteMonthButton.addEventListener("click", resetRouteCurrentMonth);
   els.logoutButton.addEventListener("click", logout);
   els.logoutTopButton.addEventListener("click", logout);
@@ -247,6 +253,7 @@ async function refreshData() {
   state.records = records;
   state.routeRecords = routeRecords;
   if (state.currentUser) state.currentUser = users.find((u) => String(u.id) === String(state.currentUser.id)) || null;
+  syncExportFilters();
 }
 
 async function restoreSession() {
@@ -357,6 +364,28 @@ function renderRouteSummary() {
   els.routeSummaryList.innerHTML = produtos.length ? produtos.map((p) => `<article class="stack-item"><strong>${escapeHtml(p.nome)}</strong><p>${p.quantidade} unidade(s) marcadas para entrega.</p></article>`).join("") : `<div class="empty-state">Marque os produtos da rota e informe as quantidades.</div>`;
 }
 
+function syncExportFilters() {
+  const members = state.users.filter((user) => user.tipo === "membro").sort((left, right) => left.nome.localeCompare(right.nome));
+  const currentFarmMember = els.farmExportMember.value || "all";
+  const currentRouteMember = els.routeExportMember.value || "all";
+  const options = [`<option value="all">Todos os membros</option>`]
+    .concat(members.map((user) => `<option value="${escapeHtml(String(user.id))}">${escapeHtml(user.nome)}</option>`))
+    .join("");
+
+  els.farmExportMember.innerHTML = options;
+  els.routeExportMember.innerHTML = options;
+  els.farmExportMember.value = members.some((user) => String(user.id) === currentFarmMember) ? currentFarmMember : "all";
+  els.routeExportMember.value = members.some((user) => String(user.id) === currentRouteMember) ? currentRouteMember : "all";
+
+  if (!els.farmExportStart.value || !els.farmExportEnd.value || !els.routeExportStart.value || !els.routeExportEnd.value) {
+    const defaults = getLastThirtyDaysRange();
+    if (!els.farmExportStart.value) els.farmExportStart.value = defaults.startKey;
+    if (!els.farmExportEnd.value) els.farmExportEnd.value = defaults.endKey;
+    if (!els.routeExportStart.value) els.routeExportStart.value = defaults.startKey;
+    if (!els.routeExportEnd.value) els.routeExportEnd.value = defaults.endKey;
+  }
+}
+
 function switchTab(tab, rerender = true) {
   state.activeTab = tab;
   els.farmTabButton.classList.toggle("is-active", tab === "farm");
@@ -427,50 +456,28 @@ function buildWeeklyArchive(records, valueField) { const grouped = new Map(); re
 function getTodayRouteTotal() { return state.routeRecords.filter((r) => toDateKey(r.data) === getDateKey()).reduce((t, r) => t + Number(r.total_entregues || 0), 0); }
 function formatRouteProducts(produtos) { return Array.isArray(produtos) ? produtos.map((p) => `${p.nome} (${p.quantidade})`).join(", ") : "Sem produtos"; }
 function exportData() { const payload = { generatedAt: new Date().toISOString(), users: state.users, records: state.records, routeRecords: state.routeRecords }; const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `painel-fazenda-backup-${getDateKey()}.json`; link.click(); URL.revokeObjectURL(url); }
-function exportFarmLastMonthReport() {
+function exportFarmPeriodReport() {
   if (!isAdmin()) return;
-  const month = getMonthRange(-1);
-  const records = state.records.filter((record) => isDateInRange(record.data, month.start, month.end));
-  if (!records.length) return window.alert("Nao ha registros da meta principal no ultimo mes.");
+  const range = getExportRange(els.farmExportStart.value, els.farmExportEnd.value);
+  if (!range) return window.alert("Informe um periodo valido para exportar a meta principal.");
+  const members = getExportMembers(els.farmExportMember.value);
   const rows = [
-    ["Data", "Nome", "Usuario", "Farm", "Materiais", "Dinheiro", "Restantes", "Status"],
-    ...records.map((record) => {
-      const user = state.users.find((item) => String(item.id) === String(record.usuario));
-      return [
-        formatDateTime(new Date(record.data)),
-        user?.nome || "Usuario removido",
-        user?.usuario || "-",
-        record.farm || "-",
-        record.materiais || 0,
-        Number(record.dinheiro || 0).toFixed(2),
-        record.restantes || 0,
-        record.status || "-",
-      ];
-    }),
+    ["Data", "Nome", "Usuario", "Status do dia", "Farm", "Materiais", "Dinheiro", "Restantes", "Observacao"],
+    ...buildFarmExportRows(members, range.start, range.end),
   ];
-  downloadExcelCsv(`meta-principal-${month.label}.csv`, rows);
+  downloadExcelCsv(`meta-principal-${range.label}.csv`, rows);
 }
 
-function exportRouteLastMonthReport() {
+function exportRoutePeriodReport() {
   if (!isAdmin()) return;
-  const month = getMonthRange(-1);
-  const records = state.routeRecords.filter((record) => isDateInRange(record.data, month.start, month.end));
-  if (!records.length) return window.alert("Nao ha registros de rota no ultimo mes.");
+  const range = getExportRange(els.routeExportStart.value, els.routeExportEnd.value);
+  if (!range) return window.alert("Informe um periodo valido para exportar a farm de rota.");
+  const members = getExportMembers(els.routeExportMember.value);
   const rows = [
-    ["Data", "Nome", "Usuario", "Produtos", "Total Entregue", "Status"],
-    ...records.map((record) => {
-      const user = state.users.find((item) => String(item.id) === String(record.usuario));
-      return [
-        formatDateTime(new Date(record.data)),
-        user?.nome || "Usuario removido",
-        user?.usuario || "-",
-        formatRouteProducts(record.produtos),
-        record.total_entregues || 0,
-        record.status || "-",
-      ];
-    }),
+    ["Data", "Nome", "Usuario", "Status do dia", "Produtos", "Total Entregue", "Observacao"],
+    ...buildRouteExportRows(members, range.start, range.end),
   ];
-  downloadExcelCsv(`farm-rota-${month.label}.csv`, rows);
+  downloadExcelCsv(`farm-rota-${range.label}.csv`, rows);
 }
 
 async function resetFarmCurrentMonth() {
@@ -524,6 +531,88 @@ function getMonthRange(offset) {
 function isDateInRange(value, start, end) {
   const date = new Date(value);
   return date >= start && date < end;
+}
+function getLastThirtyDaysRange() {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 29);
+  return { startKey: getDateKey(start), endKey: getDateKey(end) };
+}
+
+function getExportRange(startValue, endValue) {
+  if (!startValue || !endValue) return null;
+  const start = new Date(`${startValue}T00:00:00`);
+  const end = new Date(`${endValue}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return null;
+  return {
+    start,
+    end,
+    label: `${startValue}_ate_${endValue}`,
+  };
+}
+
+function getExportMembers(memberId) {
+  const members = state.users.filter((user) => user.tipo === "membro");
+  if (memberId === "all") return members;
+  return members.filter((user) => String(user.id) === String(memberId));
+}
+
+function buildFarmExportRows(members, start, end) {
+  const rows = [];
+  for (const user of members) {
+    for (const date of iterateDates(start, end)) {
+      const dateKey = getDateKey(date);
+      const record = state.records.find((item) => String(item.usuario) === String(user.id) && toDateKey(item.data) === dateKey);
+      const optional = !isRequiredDay(date);
+      rows.push([
+        formatDate(date),
+        user.nome,
+        user.usuario,
+        record ? "Entregue" : (optional ? "Opcional" : "Nao entregou"),
+        record?.farm || "-",
+        record?.materiais ?? "-",
+        record ? Number(record.dinheiro || 0).toFixed(2) : "-",
+        record?.restantes ?? "-",
+        record ? "Cumpriu e ganhou" : (optional ? "Dia opcional" : "Sem entrega no periodo"),
+      ]);
+    }
+  }
+  return rows;
+}
+
+function buildRouteExportRows(members, start, end) {
+  const rows = [];
+  for (const user of members) {
+    for (const date of iterateDates(start, end)) {
+      const dateKey = getDateKey(date);
+      const record = state.routeRecords.find((item) => String(item.usuario) === String(user.id) && toDateKey(item.data) === dateKey);
+      const optional = !isRequiredDay(date);
+      rows.push([
+        formatDate(date),
+        user.nome,
+        user.usuario,
+        record ? "Entregue" : (optional ? "Opcional" : "Nao entregou"),
+        record ? formatRouteProducts(record.produtos) : "-",
+        record?.total_entregues ?? "-",
+        record ? "Cumpriu a rota" : (optional ? "Dia opcional" : "Sem entrega no periodo"),
+      ]);
+    }
+  }
+  return rows;
+}
+
+function iterateDates(start, end) {
+  const dates = [];
+  const current = new Date(start);
+  current.setHours(0, 0, 0, 0);
+  const endAt = new Date(end);
+  endAt.setHours(0, 0, 0, 0);
+  while (current <= endAt) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
 }
 function getUserName(userId) { return state.users.find((u) => String(u.id) === String(userId))?.nome || "Usuario removido"; }
 function updateFileLabel(input, target) { const file = input.files[0]; target.textContent = file ? file.name : "Nenhum arquivo selecionado"; }
