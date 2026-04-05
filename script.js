@@ -2,7 +2,7 @@ const STORAGE_KEY = "painel-fazenda-gta";
 const SESSION_KEY = `${STORAGE_KEY}:sessionUserId`;
 const LEGACY_STORAGE_KEYS = ["painel-farm-gta-rp", "painel-fazenda-gta-rp-v2"];
 const DEFAULT_SUPABASE_CONFIG = {
-  url: "https://leypzjulxskqhxzuizjb.supabase.co",
+  url: "https://leypzjulxksqhxzuzjjb.supabase.co",
   anonKey: "sb_publishable_KFdDoU5eXIwtU5wAIK_MOg_qVKqSlfs",
 };
 const DEFAULT_ADMIN = {
