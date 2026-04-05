@@ -114,8 +114,8 @@ button {
 }
 
 .brand-logo {
-  width: 56px;
-  height: 56px;
+  width: 90px;
+  height: 90px;
   object-fit: contain;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
@@ -124,9 +124,9 @@ button {
 }
 
 .brand-logo-lg {
-  width: 74px;
-  height: 74px;
-  padding: 10px;
+  width: 140px;
+  height: 140px;
+  padding: 12px;
 }
 
 .auth-copy p {
