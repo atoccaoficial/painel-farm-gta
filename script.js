@@ -2,7 +2,7 @@ const STORAGE_KEY = "painel-fazenda-gta";
 const SESSION_KEY = `${STORAGE_KEY}:sessionUserId`;
 const LEGACY_STORAGE_KEYS = ["painel-farm-gta-rp", "painel-fazenda-gta-rp-v2"];
 const DEFAULT_SUPABASE_CONFIG = {
-  url: "https://leypzjulxksqhxzuzjjb.supabase.co",
+  url: "https://leypzjulxskqhxzuizjb.supabase.co",
   anonKey: "sb_publishable_KFdDoU5eXIwtU5wAIK_MOg_qVKqSlfs",
 };
 const DEFAULT_ADMIN = {
@@ -11,7 +11,6 @@ const DEFAULT_ADMIN = {
   senha: "123456",
   tipo: "admin",
 };
-
 
 const state = {
   supabase: null,
@@ -105,6 +104,7 @@ async function initialize() {
     await ensureDefaultAdmin();
     await restoreSession();
     await refreshData();
+    clearMessage(els.loginMessage);
   } catch (error) {
     console.error(error);
     showMessage(els.loginMessage, getErrorMessage(error), "error");
