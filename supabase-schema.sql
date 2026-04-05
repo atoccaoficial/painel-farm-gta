@@ -21,8 +21,19 @@ create table if not exists public.registros (
   status text not null default 'Entregue'
 );
 
+create table if not exists public.registros_rota (
+  id uuid primary key default gen_random_uuid(),
+  usuario uuid not null references public.usuarios(id) on delete cascade,
+  produtos jsonb not null default '[]'::jsonb,
+  total_entregues integer not null default 0,
+  print text not null,
+  data timestamptz not null default now(),
+  status text not null default 'Entregue'
+);
+
 alter table public.usuarios enable row level security;
 alter table public.registros enable row level security;
+alter table public.registros_rota enable row level security;
 
 drop policy if exists "usuarios_select_all" on public.usuarios;
 drop policy if exists "usuarios_insert_all" on public.usuarios;
@@ -32,6 +43,10 @@ drop policy if exists "registros_select_all" on public.registros;
 drop policy if exists "registros_insert_all" on public.registros;
 drop policy if exists "registros_update_all" on public.registros;
 drop policy if exists "registros_delete_all" on public.registros;
+drop policy if exists "registros_rota_select_all" on public.registros_rota;
+drop policy if exists "registros_rota_insert_all" on public.registros_rota;
+drop policy if exists "registros_rota_update_all" on public.registros_rota;
+drop policy if exists "registros_rota_delete_all" on public.registros_rota;
 
 create policy "usuarios_select_all"
 on public.usuarios for select
@@ -75,8 +90,31 @@ on public.registros for delete
 to anon
 using (true);
 
+create policy "registros_rota_select_all"
+on public.registros_rota for select
+to anon
+using (true);
+
+create policy "registros_rota_insert_all"
+on public.registros_rota for insert
+to anon
+with check (true);
+
+create policy "registros_rota_update_all"
+on public.registros_rota for update
+to anon
+using (true)
+with check (true);
+
+create policy "registros_rota_delete_all"
+on public.registros_rota for delete
+to anon
+using (true);
+
 create index if not exists idx_registros_usuario on public.registros(usuario);
 create index if not exists idx_registros_data on public.registros(data desc);
+create index if not exists idx_registros_rota_usuario on public.registros_rota(usuario);
+create index if not exists idx_registros_rota_data on public.registros_rota(data desc);
 
 insert into public.usuarios (nome, usuario, senha, tipo)
 select 'Administrador', 'admin', '123456', 'admin'

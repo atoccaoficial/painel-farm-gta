@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Painel de Farm Carmesim's</title>
-
   <meta
     name="description"
     content="Sistema interno para controle de farm, metas diarias e ranking semanal da familia GTA RP."
@@ -17,8 +16,13 @@
   <main class="app-shell">
     <section id="authView" class="auth-layout">
       <div class="auth-copy">
-        <span class="eyebrow">Painel Interno</span>
-        <h1>Painel de Farm Carmesim's</h1>
+        <div class="brand-inline brand-inline-hero">
+          <img src="logo.svg" alt="Logo Carmesim's" class="brand-logo brand-logo-lg" />
+          <div>
+            <span class="eyebrow">Painel Interno</span>
+            <h1>Painel de Farm Carmesim's</h1>
+          </div>
+        </div>
         <p>
           Controle profissional para metas diarias, ranking semanal, uploads obrigatorios
           e monitoramento automatico de quem entregou ou ficou pendente.
@@ -71,9 +75,14 @@
     <section id="appView" class="dashboard hidden">
       <aside class="sidebar">
         <div class="brand-card">
-          <span class="eyebrow">Sistema</span>
-          <h2>Painel de Farm Carmesim's</h2>
-          <p>Controle interno de farm, metas e comprovantes.</p>
+          <div class="brand-inline">
+            <img src="logo.svg" alt="Logo Carmesim's" class="brand-logo" />
+            <div>
+              <span class="eyebrow">Sistema</span>
+              <h2>Painel de Farm Carmesim's</h2>
+            </div>
+          </div>
+          <p>Controle interno de farm da Carmesim's, metas e comprovantes.</p>
         </div>
 
         <div class="status-card">
@@ -128,6 +137,12 @@
           </div>
         </header>
 
+        <section class="tab-strip">
+          <button id="farmTabButton" class="tab-button is-active" type="button">Farm principal</button>
+          <button id="routeTabButton" class="tab-button" type="button">Farm de rota</button>
+        </section>
+
+        <div id="farmTabView" class="tab-view">
         <section class="hero-grid">
           <article class="hero-card hero-card-primary">
             <span class="hero-label">Obrigatoriedade</span>
@@ -270,6 +285,154 @@
             </table>
           </div>
         </section>
+        </div>
+
+        <div id="routeTabView" class="tab-view hidden">
+          <section class="content-grid">
+            <section class="card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Rota do dia</span>
+                  <h3>Registrar farm de rota</h3>
+                </div>
+                <span class="badge badge-danger">Print obrigatorio</span>
+              </div>
+
+              <form id="routeForm" class="route-form">
+                <label>
+                  Nome
+                  <input id="routeMemberName" type="text" readonly />
+                </label>
+
+                <div id="routeProducts" class="route-products">
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Algemas" /> <span>Algemas</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Algemas" />
+                  </article>
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Kit medico" /> <span>Kit medico</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Kit medico" />
+                  </article>
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Colete" /> <span>Colete</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Colete" />
+                  </article>
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Lockpick" /> <span>Lockpick</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Lockpick" />
+                  </article>
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Capuz" /> <span>Capuz</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Capuz" />
+                  </article>
+                  <article class="route-product">
+                    <label class="route-check"><input type="checkbox" data-route-product="Pendrive" /> <span>Pendrive</span></label>
+                    <input type="number" min="0" step="1" value="0" data-route-quantity="Pendrive" />
+                  </article>
+                </div>
+
+                <label class="file-label">
+                  Print do bau
+                  <input id="routePrint" type="file" accept="image/*" required />
+                  <span id="routeFileLabel" class="field-help">Nenhum arquivo selecionado</span>
+                </label>
+
+                <div class="readonly-grid">
+                  <article>
+                    <span>Data automatica</span>
+                    <strong id="routeAutoDate">--</strong>
+                  </article>
+                  <article>
+                    <span>Status automatico</span>
+                    <strong class="success">Entregue</strong>
+                  </article>
+                </div>
+
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">Salvar rota</button>
+                  <button id="clearRouteFormButton" class="btn btn-secondary" type="button">Limpar</button>
+                </div>
+              </form>
+
+              <p id="routeMessage" class="form-message" aria-live="polite"></p>
+            </section>
+
+            <section class="card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Produtos da rota</span>
+                  <h3>Resumo do envio</h3>
+                </div>
+                <span id="routeSummaryBadge" class="badge badge-info">Selecione produtos</span>
+              </div>
+              <div id="routeSummaryList" class="stack-list"></div>
+            </section>
+          </section>
+
+          <section id="routeHistorySection" class="card">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">Meu historico de rota</span>
+                <h3>Entregas da conta atual</h3>
+              </div>
+              <span id="routeHistorySummary" class="badge badge-info">--</span>
+            </div>
+
+            <div class="table-shell">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Produtos</th>
+                    <th>Total</th>
+                    <th>Print</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="routeHistoryBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="adminRouteSection" class="admin-layout hidden">
+            <section class="content-grid">
+              <section class="card">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">Administrador rota</span>
+                    <h3>Registros gerais de rota</h3>
+                  </div>
+                  <span class="badge badge-success">Mesmos membros, nova aba</span>
+                </div>
+                <div class="table-shell">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nome</th>
+                        <th>Produtos</th>
+                        <th>Total</th>
+                        <th>Print</th>
+                        <th>Status</th>
+                        <th>Data</th>
+                      </tr>
+                    </thead>
+                    <tbody id="routeRecordsBody"></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="section-heading">
+                  <div>
+                    <span class="eyebrow">Ranking rota</span>
+                    <h3>Quem mais entregou</h3>
+                  </div>
+                </div>
+                <div id="routeRankingList" class="stack-list"></div>
+              </section>
+            </section>
+          </section>
+        </div>
 
         <section id="adminSection" class="admin-layout hidden">
           <section class="content-grid">
