@@ -91,6 +91,7 @@ const els = {
   weeklyArchive: document.getElementById("weeklyArchive"),
   exportButton: document.getElementById("exportButton"),
   logoutButton: document.getElementById("logoutButton"),
+  logoutTopButton: document.getElementById("logoutTopButton"),
   imageModal: document.getElementById("imageModal"),
   modalImage: document.getElementById("modalImage"),
   closeModalButton: document.getElementById("closeModalButton"),
@@ -134,6 +135,7 @@ function bindEvents() {
   els.exportRouteLastMonthButton.addEventListener("click", exportRouteLastMonthReport);
   els.resetRouteMonthButton.addEventListener("click", resetRouteCurrentMonth);
   els.logoutButton.addEventListener("click", logout);
+  els.logoutTopButton.addEventListener("click", logout);
   els.exportButton.addEventListener("click", exportData);
   els.closeModalButton.addEventListener("click", closeModal);
   els.imageModal.addEventListener("click", (e) => { if (e.target.dataset.close === "true") closeModal(); });
