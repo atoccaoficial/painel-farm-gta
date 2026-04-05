@@ -268,6 +268,14 @@ button {
   flex-wrap: wrap;
 }
 
+.section-heading-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .tab-strip {
   display: flex;
   gap: 12px;

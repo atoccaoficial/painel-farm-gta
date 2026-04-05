@@ -66,10 +66,17 @@ const els = {
   clearRouteFormButton: document.getElementById("clearRouteFormButton"),
   routeSummaryBadge: document.getElementById("routeSummaryBadge"),
   routeSummaryList: document.getElementById("routeSummaryList"),
+  routeMissingSummary: document.getElementById("routeMissingSummary"),
+  routeStatusBody: document.getElementById("routeStatusBody"),
+  routeMissingList: document.getElementById("routeMissingList"),
   routeHistoryBody: document.getElementById("routeHistoryBody"),
   routeHistorySummary: document.getElementById("routeHistorySummary"),
   routeRecordsBody: document.getElementById("routeRecordsBody"),
   routeRankingList: document.getElementById("routeRankingList"),
+  exportFarmLastMonthButton: document.getElementById("exportFarmLastMonthButton"),
+  resetFarmMonthButton: document.getElementById("resetFarmMonthButton"),
+  exportRouteLastMonthButton: document.getElementById("exportRouteLastMonthButton"),
+  resetRouteMonthButton: document.getElementById("resetRouteMonthButton"),
   memberForm: document.getElementById("memberForm"),
   memberId: document.getElementById("memberId"),
   memberName: document.getElementById("memberName"),
@@ -122,6 +129,10 @@ function bindEvents() {
   els.memberHistoryBody.addEventListener("click", handleImageButtons);
   els.routeHistoryBody.addEventListener("click", handleImageButtons);
   els.routeRecordsBody.addEventListener("click", handleImageButtons);
+  els.exportFarmLastMonthButton.addEventListener("click", exportFarmLastMonthReport);
+  els.resetFarmMonthButton.addEventListener("click", resetFarmCurrentMonth);
+  els.exportRouteLastMonthButton.addEventListener("click", exportRouteLastMonthReport);
+  els.resetRouteMonthButton.addEventListener("click", resetRouteCurrentMonth);
   els.logoutButton.addEventListener("click", logout);
   els.exportButton.addEventListener("click", exportData);
   els.closeModalButton.addEventListener("click", closeModal);
@@ -260,27 +271,39 @@ function renderShell() {
   const today = new Date();
   const todayRecords = getTodayRecords();
   const weeklyRecords = getCurrentWeekRecords();
-  const ranking = computeRanking(weeklyRecords);
+  const todayRouteRecords = getTodayRouteRecords();
+  const weeklyRouteRecords = getCurrentWeekRouteRecords();
+  const ranking = state.activeTab === "farm" ? computeRanking(weeklyRecords) : computeRouteRanking(weeklyRouteRecords);
   const topMember = ranking.find((i) => i.deliveries > 0);
-  const pending = getPendingMembers();
+  const pending = state.activeTab === "farm" ? getPendingMembers() : getPendingRouteMembers();
   els.sidebarDateLabel.textContent = `${formatDate(today)} - ${capitalize(getWeekdayLabel(today))}`;
-  els.sidebarModeLabel.textContent = isRequiredDay(today) ? "Meta obrigatoria" : "Meta opcional";
+  els.sidebarModeLabel.textContent = state.activeTab === "farm"
+    ? (isRequiredDay(today) ? "Meta obrigatoria" : "Meta opcional")
+    : (isRequiredDay(today) ? "Rota obrigatoria" : "Rota opcional");
   els.sidebarUserName.textContent = user.nome;
   els.sidebarUserRole.textContent = user.tipo === "admin" ? "Administrador" : "Membro";
   els.pageTitle.textContent = state.activeTab === "farm" ? (user.tipo === "admin" ? "Painel Administrativo" : "Painel do Membro") : "Farm de rota";
   els.pageSubtitle.textContent = state.activeTab === "farm" ? "Monitoramento em tempo real de farms, ranking e pendencias." : "Checklist de produtos da rota com print obrigatorio.";
   els.requiredBadge.textContent = isRequiredDay(today) ? "Obrigatorio hoje" : "Opcional hoje";
   els.deliveryBadge.textContent = state.activeTab === "farm" ? (hasDeliveredToday(user.id) ? "Sua entrega esta registrada" : "Sua entrega ainda esta pendente") : (hasRouteToday(user.id) ? "Sua rota esta registrada" : "Sua rota ainda esta pendente");
-  els.miniDelivered.textContent = String(todayRecords.length);
+  els.miniDelivered.textContent = String(state.activeTab === "farm" ? todayRecords.length : todayRouteRecords.length);
   els.miniPending.textContent = String(pending.length);
-  els.miniWeekly.textContent = String(weeklyRecords.length);
-  els.heroObligation.textContent = isRequiredDay(today) ? "Entrega obrigatoria" : "Entrega opcional";
-  els.heroObligationDescription.textContent = isRequiredDay(today) ? "Segunda a sexta os membros precisam enviar a meta diaria no banco." : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.";
+  els.miniWeekly.textContent = String(state.activeTab === "farm" ? weeklyRecords.length : weeklyRouteRecords.length);
+  els.heroObligation.textContent = state.activeTab === "farm"
+    ? (isRequiredDay(today) ? "Entrega obrigatoria" : "Entrega opcional")
+    : (isRequiredDay(today) ? "Rota obrigatoria" : "Rota opcional");
+  els.heroObligationDescription.textContent = state.activeTab === "farm"
+    ? (isRequiredDay(today) ? "Segunda a sexta os membros precisam enviar a meta diaria no banco." : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.")
+    : (isRequiredDay(today) ? "A rota tambem possui controle proprio de entrega e pendencias." : "Fim de semana continua entrando no ranking da rota, sem pendencia obrigatoria.");
   els.heroDirtyMoney.textContent = state.activeTab === "farm" ? formatMoney(sumBy(todayRecords, "dinheiro")) : `${getTodayRouteTotal()} itens`;
   els.heroTopMember.textContent = topMember ? topMember.memberName : "Sem entregas";
-  els.heroTopMemberDescription.textContent = topMember ? `${topMember.deliveries} entrega(s) registradas nesta semana.` : "O ranking semanal sera preenchido quando houver registros.";
+  els.heroTopMemberDescription.textContent = state.activeTab === "farm"
+    ? (topMember ? `${topMember.deliveries} entrega(s) registradas nesta semana.` : "O ranking semanal sera preenchido quando houver registros.")
+    : (topMember ? `${topMember.deliveries} item(ns) entregues na rota nesta semana.` : "O ranking da rota sera preenchido quando houver registros.");
   els.heroMissedCount.textContent = String(pending.length);
-  els.missingSummary.textContent = isRequiredDay(today) ? `${pending.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade";
+  els.missingSummary.textContent = state.activeTab === "farm"
+    ? (isRequiredDay(today) ? `${pending.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade")
+    : (isRequiredDay(today) ? `${pending.length} pendencia(s) de rota` : "Fim de semana sem obrigatoriedade");
 }
 
 function renderFarm() {
@@ -312,12 +335,17 @@ function renderRoute() {
   els.routeMemberName.value = state.currentUser.nome;
   els.routeAutoDate.textContent = formatDateTime(new Date());
   renderRouteSummary();
+  const routeRows = getRouteStatusRows();
+  const routeMissing = getPendingRouteMembers();
   const own = state.routeRecords.filter((r) => String(r.usuario) === String(state.currentUser.id)).sort((a, b) => new Date(b.data) - new Date(a.data));
+  els.routeMissingSummary.textContent = isRequiredDay() ? `${routeMissing.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade";
+  els.routeStatusBody.innerHTML = routeRows.length ? routeRows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.produtos)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
+  els.routeMissingList.innerHTML = routeMissing.length ? routeMissing.map((u) => `<article class="stack-item"><strong>${escapeHtml(u.nome)}</strong><p>Ainda nao registrou a rota do dia.</p></article>`).join("") : `<div class="empty-state">${isRequiredDay() ? "Todos os membros entregaram a rota hoje." : "Hoje nao ha pendencias obrigatorias na rota."}</div>`;
   els.routeHistorySummary.textContent = `${own.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())).length} rota(s) nesta semana`;
   els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada para esta conta.");
   const routeRecords = [...state.routeRecords].sort((a, b) => new Date(b.data) - new Date(a.data));
   els.routeRecordsBody.innerHTML = routeRecords.length ? routeRecords.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(6, "Nenhum registro de rota encontrado.");
-  const ranking = computeRouteRanking().filter((i) => i.deliveries > 0);
+  const ranking = computeRouteRanking(getCurrentWeekRouteRecords()).filter((i) => i.deliveries > 0);
   els.routeRankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} item(ns) entregues na rota esta semana.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas de rota nesta semana.</div>`;
 }
 
@@ -353,6 +381,7 @@ async function saveFarmRecord(existingId, payload) { if (existingId) return supa
 async function saveRouteRecord(existingId, payload) { if (existingId) return supabasePatch("registros_rota", { id: `eq.${existingId}` }, payload); return supabaseInsert("registros_rota", payload); }
 async function deleteMember(userId) { await supabaseDelete("registros", { usuario: `eq.${userId}` }); try { await supabaseDelete("registros_rota", { usuario: `eq.${userId}` }); } catch {} await supabaseDelete("usuarios", { id: `eq.${userId}` }); }
 async function ensureDefaultAdmin() { const users = await supabaseSelect("usuarios", { select: "id", limit: 1 }); if (!users.length) await supabaseInsert("usuarios", DEFAULT_ADMIN); }
+async function deleteRecordsInMonth(table, startDate, endDate) { return await supabaseDeleteRange(table, "data", startDate.toISOString(), endDate.toISOString()); }
 
 async function supabaseSelect(table, options = {}) {
   const query = new URLSearchParams({ select: options.select || "*" });
@@ -365,6 +394,7 @@ async function supabaseSelect(table, options = {}) {
 async function supabaseInsert(table, payload) { return await supabaseRequest(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) }); }
 async function supabasePatch(table, filters, payload) { const query = new URLSearchParams(); Object.entries(filters).forEach(([k, v]) => query.set(k, v)); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) }); }
 async function supabaseDelete(table, filters) { const query = new URLSearchParams(); Object.entries(filters).forEach(([k, v]) => query.set(k, v)); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "DELETE" }); }
+async function supabaseDeleteRange(table, field, fromIso, toIso) { const query = new URLSearchParams(); query.append(field, `gte.${fromIso}`); query.append(field, `lt.${toIso}`); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "DELETE" }); }
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${state.supabase.url}${path}`, { method: options.method || "GET", headers: { apikey: state.supabase.anonKey, Authorization: `Bearer ${state.supabase.anonKey}`, "Content-Type": "application/json", ...(options.headers || {}) }, body: options.body });
   if (!response.ok) throw new Error(await response.text());
@@ -381,16 +411,118 @@ function resetMemberForm() { els.memberForm.reset(); els.memberId.value = ""; el
 function validateFarmPayload(payload) { if (!payload.farm || !payload.materiais || !payload.print) return "Preencha o farm principal corretamente."; if (!Number.isFinite(payload.dinheiro) || payload.dinheiro < 0 || !Number.isFinite(payload.restantes) || payload.restantes < 0) return "Revise os campos do formulario."; return ""; }
 function getTodayRecords() { return state.records.filter((r) => toDateKey(r.data) === getDateKey()); }
 function getCurrentWeekRecords() { return state.records.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
+function getTodayRouteRecords() { return state.routeRecords.filter((r) => toDateKey(r.data) === getDateKey()); }
+function getCurrentWeekRouteRecords() { return state.routeRecords.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
 function getPendingMembers() { if (!isRequiredDay()) return []; return state.users.filter((u) => u.tipo === "membro" && !state.records.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
+function getPendingRouteMembers() { if (!isRequiredDay()) return []; return state.users.filter((u) => u.tipo === "membro" && !state.routeRecords.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
 function hasDeliveredToday(userId) { return state.records.some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
 function hasRouteToday(userId) { return state.routeRecords.some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
 function getDailyStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.records.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", farm: record.farm, data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", farm: "-", data: formatDate(new Date()) }; }); }
+function getRouteStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.routeRecords.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", produtos: formatRouteProducts(record.produtos), data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", produtos: "-", data: formatDate(new Date()) }; }); }
 function computeRanking(records) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).length })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
-function computeRouteRanking() { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: state.routeRecords.filter((r) => String(r.usuario) === String(u.id) && isSameWeek(toDateKey(r.data), getWeekKey())).reduce((t, r) => t + Number(r.total_entregues || 0), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
+function computeRouteRanking(records = getCurrentWeekRouteRecords()) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).reduce((t, r) => t + Number(r.total_entregues || 0), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
 function buildWeeklyArchive(records, valueField) { const grouped = new Map(); records.forEach((r) => { const key = getWeekKey(new Date(r.data)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(r); }); return Array.from(grouped.entries()).map(([weekKey, list]) => ({ weekKey, totalDeliveries: list.length, totalValue: list.reduce((t, r) => t + Number(r[valueField] || 0), 0), topMember: (computeRanking(list).find((i) => i.deliveries > 0)?.memberName || "Sem entregas") })).sort((a, b) => b.weekKey.localeCompare(a.weekKey)); }
 function getTodayRouteTotal() { return state.routeRecords.filter((r) => toDateKey(r.data) === getDateKey()).reduce((t, r) => t + Number(r.total_entregues || 0), 0); }
 function formatRouteProducts(produtos) { return Array.isArray(produtos) ? produtos.map((p) => `${p.nome} (${p.quantidade})`).join(", ") : "Sem produtos"; }
 function exportData() { const payload = { generatedAt: new Date().toISOString(), users: state.users, records: state.records, routeRecords: state.routeRecords }; const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `painel-fazenda-backup-${getDateKey()}.json`; link.click(); URL.revokeObjectURL(url); }
+function exportFarmLastMonthReport() {
+  if (!isAdmin()) return;
+  const month = getMonthRange(-1);
+  const records = state.records.filter((record) => isDateInRange(record.data, month.start, month.end));
+  if (!records.length) return window.alert("Nao ha registros da meta principal no ultimo mes.");
+  const rows = [
+    ["Data", "Nome", "Usuario", "Farm", "Materiais", "Dinheiro", "Restantes", "Status"],
+    ...records.map((record) => {
+      const user = state.users.find((item) => String(item.id) === String(record.usuario));
+      return [
+        formatDateTime(new Date(record.data)),
+        user?.nome || "Usuario removido",
+        user?.usuario || "-",
+        record.farm || "-",
+        record.materiais || 0,
+        Number(record.dinheiro || 0).toFixed(2),
+        record.restantes || 0,
+        record.status || "-",
+      ];
+    }),
+  ];
+  downloadExcelCsv(`meta-principal-${month.label}.csv`, rows);
+}
+
+function exportRouteLastMonthReport() {
+  if (!isAdmin()) return;
+  const month = getMonthRange(-1);
+  const records = state.routeRecords.filter((record) => isDateInRange(record.data, month.start, month.end));
+  if (!records.length) return window.alert("Nao ha registros de rota no ultimo mes.");
+  const rows = [
+    ["Data", "Nome", "Usuario", "Produtos", "Total Entregue", "Status"],
+    ...records.map((record) => {
+      const user = state.users.find((item) => String(item.id) === String(record.usuario));
+      return [
+        formatDateTime(new Date(record.data)),
+        user?.nome || "Usuario removido",
+        user?.usuario || "-",
+        formatRouteProducts(record.produtos),
+        record.total_entregues || 0,
+        record.status || "-",
+      ];
+    }),
+  ];
+  downloadExcelCsv(`farm-rota-${month.label}.csv`, rows);
+}
+
+async function resetFarmCurrentMonth() {
+  if (!isAdmin()) return;
+  const month = getMonthRange(0);
+  const confirmed = window.confirm(`Limpar todos os registros da meta principal de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
+  if (!confirmed) return;
+  await deleteRecordsInMonth("registros", month.start, month.end);
+  await refreshData();
+  renderApp();
+}
+
+async function resetRouteCurrentMonth() {
+  if (!isAdmin()) return;
+  const month = getMonthRange(0);
+  const confirmed = window.confirm(`Limpar todos os registros da rota de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
+  if (!confirmed) return;
+  await deleteRecordsInMonth("registros_rota", month.start, month.end);
+  await refreshData();
+  renderApp();
+}
+
+function downloadExcelCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(toCsvCell).join(";")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function toCsvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function getMonthRange(offset) {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth() + offset, 1, 0, 0, 0, 0);
+  const end = new Date(today.getFullYear(), today.getMonth() + offset + 1, 1, 0, 0, 0, 0);
+  return {
+    start,
+    end,
+    label: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+    prettyLabel: start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+  };
+}
+
+function isDateInRange(value, start, end) {
+  const date = new Date(value);
+  return date >= start && date < end;
+}
 function getUserName(userId) { return state.users.find((u) => String(u.id) === String(userId))?.nome || "Usuario removido"; }
 function updateFileLabel(input, target) { const file = input.files[0]; target.textContent = file ? file.name : "Nenhum arquivo selecionado"; }
 function handleImageButtons(event) { const button = event.target.closest("[data-image]"); if (button) openModal(decodeURIComponent(button.dataset.image)); }
