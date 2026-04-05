@@ -1,6 +1,10 @@
 const STORAGE_KEY = "painel-fazenda-gta";
 const SESSION_KEY = `${STORAGE_KEY}:sessionUserId`;
 const LEGACY_STORAGE_KEYS = ["painel-farm-gta-rp", "painel-fazenda-gta-rp-v2"];
+const DEFAULT_SUPABASE_CONFIG = {
+  url: "https://leypzjulxskqhxzuijjb.supabase.co",
+  anonKey: "sb_publishable_KFdDoU5eXIwtU5wAIK_MOg_qVKqSlfs",
+};
 const DEFAULT_ADMIN = {
   nome: "Administrador",
   usuario: "admin",
@@ -120,7 +124,7 @@ function migrateLegacyBrowserStorage() {
 }
 
 function setupSupabase() {
-  const config = window.SUPABASE_CONFIG || {};
+  const config = window.SUPABASE_CONFIG || DEFAULT_SUPABASE_CONFIG;
   const url = String(config.url || "").trim();
   const anonKey = String(config.anonKey || "").trim();
 
@@ -992,7 +996,21 @@ function clearMessage(element) {
 }
 
 function getErrorMessage(error) {
-  return error?.message || "Nao foi possivel concluir a operacao no banco.";
+  const message = error?.message || "";
+
+  if (message.includes("Failed to fetch") || message.includes("ERR_NAME_NOT_RESOLVED")) {
+    return "Falha de conexao com o Supabase. Verifique a URL do projeto e tente novo deploy.";
+  }
+
+  if (message.includes("relation") || message.includes("does not exist")) {
+    return "As tabelas do banco ainda nao existem. Execute o arquivo supabase-schema.sql no SQL Editor do Supabase.";
+  }
+
+  if (message.includes("JWT") || message.includes("apikey") || message.includes("Invalid API key")) {
+    return "Chave publishable invalida. Confira a anon key do projeto no Supabase.";
+  }
+
+  return message || "Nao foi possivel concluir a operacao no banco.";
 }
 
 function fileToDataUrl(file) {

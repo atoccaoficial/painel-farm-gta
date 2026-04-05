@@ -24,7 +24,6 @@ Sistema interno para controle de farm com persistencia real em Supabase, login i
 - [index.html](C:\Users\Windows\Documents\FARM\index.html)
 - [style.css](C:\Users\Windows\Documents\FARM\style.css)
 - [script.js](C:\Users\Windows\Documents\FARM\script.js)
-- [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js)
 - [supabase-config.example.js](C:\Users\Windows\Documents\FARM\supabase-config.example.js)
 - [supabase-schema.sql](C:\Users\Windows\Documents\FARM\supabase-schema.sql)
 
@@ -57,7 +56,7 @@ Sistema interno para controle de farm com persistencia real em Supabase, login i
 2. Abra o SQL Editor.
 3. Execute o arquivo [supabase-schema.sql](C:\Users\Windows\Documents\FARM\supabase-schema.sql).
 4. Copie a URL do projeto e a chave anon.
-5. Edite [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js).
+5. Se quiser trocar de projeto depois, crie `window.SUPABASE_CONFIG` em um arquivo separado e carregue antes do `script.js`.
 
 Exemplo:
 
@@ -91,10 +90,11 @@ Depois de executar o SQL inicial, a conta padrao sera:
 - O campo `print` esta sendo salvo no banco como `data URL` da imagem enviada.
 - O SQL ja inclui politicas RLS abertas para permitir o uso direto pelo navegador com chave `anon`.
 - As senhas estao sendo armazenadas em texto puro porque voce pediu a tabela exatamente com o campo `senha`. Em producao, o ideal e migrar isso para hash/autenticacao segura.
+- O projeto agora ja vem apontado para o seu Supabase no `script.js`, entao nao depende mais de `supabase-config.js` para funcionar.
 
 ## Deploy na Vercel
 
 1. Envie o projeto ao GitHub.
 2. Importe o repositorio na Vercel.
 3. Mantenha deploy estatico.
-4. Garanta que [supabase-config.js](C:\Users\Windows\Documents\FARM\supabase-config.js) esteja com os dados corretos antes de publicar.
+4. Se for usar outro projeto Supabase no futuro, sobrescreva a configuracao antes de publicar.
