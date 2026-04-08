@@ -377,6 +377,38 @@ button {
   color: #fff4f4;
 }
 
+.hero-card-alert {
+  animation: obligationPulse 2.2s ease-in-out infinite;
+}
+
+.hero-card-weekend {
+  background: linear-gradient(135deg, rgba(17, 111, 54, 0.96), rgba(42, 176, 96, 0.8));
+}
+
+.hero-card-weekend .hero-label,
+.hero-card-weekend strong,
+.hero-card-weekend p {
+  color: #effff5;
+}
+
+.hero-card-weekend::after {
+  background: radial-gradient(circle, rgba(140, 255, 186, 0.2), transparent 72%);
+}
+
+@keyframes obligationPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.52);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow: 0 28px 92px rgba(184, 26, 34, 0.42);
+    filter: brightness(1.08);
+  }
+}
+
 .hero-label {
   color: var(--accent);
   text-transform: uppercase;
