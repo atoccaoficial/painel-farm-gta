@@ -94,6 +94,7 @@ const els = {
   cancelEditMemberButton: document.getElementById("cancelEditMemberButton"),
   membersBody: document.getElementById("membersBody"),
   memberCounter: document.getElementById("memberCounter"),
+  exportMembersExcelButton: document.getElementById("exportMembersExcelButton"),
   weeklyArchive: document.getElementById("weeklyArchive"),
   exportButton: document.getElementById("exportButton"),
   logoutButton: document.getElementById("logoutButton"),
@@ -140,6 +141,7 @@ function bindEvents() {
   els.resetFarmMonthButton.addEventListener("click", resetFarmCurrentMonth);
   els.exportRoutePeriodButton.addEventListener("click", exportRoutePeriodReport);
   els.resetRouteMonthButton.addEventListener("click", resetRouteCurrentMonth);
+  els.exportMembersExcelButton.addEventListener("click", exportMembersExcel);
   els.logoutButton.addEventListener("click", logout);
   els.logoutTopButton.addEventListener("click", logout);
   els.exportButton.addEventListener("click", exportData);
@@ -273,6 +275,7 @@ function renderApp() {
   renderRoute();
   els.adminSection.classList.toggle("hidden", !isAdmin());
   els.adminRouteSection.classList.toggle("hidden", !isAdmin());
+  els.exportMembersExcelButton.classList.toggle("hidden", !isAdmin());
 }
 
 function renderShell() {
@@ -434,7 +437,17 @@ async function supabaseRequest(path, options = {}) {
   return text ? JSON.parse(text) : [];
 }
 
-function isAdmin() { return state.currentUser?.tipo === "admin"; }
+function normalizeRole(role) {
+  return String(role || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(".", "");
+}
+
+function isAdmin() {
+  const role = normalizeRole(state.currentUser?.tipo);
+  return role === "admin" || role === "adm";
+}
 function logout() { state.currentUser = null; sessionStorage.removeItem(SESSION_KEY); resetFarmForm(); resetRouteForm(); resetMemberForm(); renderApp(); }
 function resetFarmForm() { els.farmForm.reset(); els.materialsReceived.value = 200; els.fileLabel.textContent = "Nenhum arquivo selecionado"; }
 function resetRouteForm() { els.routeForm.reset(); document.querySelectorAll("[data-route-quantity]").forEach((i) => { i.value = 0; }); els.routeFileLabel.textContent = "Nenhum arquivo selecionado"; renderRouteSummary(); }
@@ -480,6 +493,16 @@ function exportRoutePeriodReport() {
   downloadExcelCsv(`farm-rota-${range.label}.csv`, rows);
 }
 
+function exportMembersExcel() {
+  if (!isAdmin()) return;
+  const users = [...state.users].sort((a, b) => a.nome.localeCompare(b.nome));
+  const rows = [
+    ["Nome", "Usuario", "Senha"],
+    ...users.map((user) => [user.nome, user.usuario, user.senha]),
+  ];
+  downloadExcelTable(`membros-${getDateKey()}.xls`, rows, "Membros");
+}
+
 async function resetFarmCurrentMonth() {
   if (!isAdmin()) return;
   const month = getMonthRange(0);
@@ -503,6 +526,31 @@ async function resetRouteCurrentMonth() {
 function downloadExcelCsv(filename, rows) {
   const csv = rows.map((row) => row.map(toCsvCell).join(";")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadExcelTable(filename, rows, sheetName) {
+  const tableRows = rows.map((row, index) => {
+    const tag = index === 0 ? "th" : "td";
+    const cells = row.map((value) => `<${tag}>${escapeHtml(String(value ?? ""))}</${tag}>`).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+<meta charset="utf-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${escapeHtml(sheetName)}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+</head>
+<body>
+<table>${tableRows}</table>
+</body>
+</html>`;
+  const blob = new Blob(["\uFEFF" + html], { type: "application/vnd.ms-excel;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
