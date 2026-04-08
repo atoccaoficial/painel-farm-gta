@@ -491,10 +491,10 @@ function exportRoutePeriodReport() {
   if (!range) return window.alert("Informe um periodo valido para exportar a farm de rota.");
   const members = getExportMembers(els.routeExportMember.value);
   const rows = [
-    ["Data", "Nome", "Usuario", "Status do dia", "Produtos", "Total Entregue", "Referencia do print", "Observacao"],
-    ...buildRouteExportRows(members, range.start, range.end),
+    ["Data", "Nome", "Usuario", "Status do dia", "Produtos", "Total Entregue", "Foto do print", "Referencia do print", "Observacao"],
+    ...buildRouteExportExcelRows(members, range.start, range.end),
   ];
-  downloadExcelCsv(`farm-rota-${range.label}.csv`, rows);
+  downloadExcelRichTable(`farm-rota-${range.label}.xls`, rows, "Farm de rota");
 }
 
 function exportMembersExcel() {
@@ -561,6 +561,43 @@ function downloadExcelTable(filename, rows, sheetName) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadExcelRichTable(filename, rows, sheetName) {
+  const tableRows = rows.map((row, rowIndex) => {
+    const tag = rowIndex === 0 ? "th" : "td";
+    const cells = row.map((cell) => renderExcelCell(cell, tag)).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+<meta charset="utf-8">
+<style>
+table { border-collapse: collapse; }
+th, td { border: 1px solid #cfcfcf; padding: 8px; vertical-align: middle; }
+img { display: block; max-width: 120px; max-height: 120px; object-fit: contain; }
+</style>
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${escapeHtml(sheetName)}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+</head>
+<body>
+<table>${tableRows}</table>
+</body>
+</html>`;
+  const blob = new Blob(["\uFEFF" + html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderExcelCell(cell, tag) {
+  if (cell && typeof cell === "object" && "html" in cell) {
+    return `<${tag}>${cell.html}</${tag}>`;
+  }
+  return `<${tag}>${escapeHtml(String(cell ?? ""))}</${tag}>`;
 }
 
 function toCsvCell(value) {
@@ -656,10 +693,40 @@ function buildRouteExportRows(members, start, end) {
   return rows;
 }
 
+function buildRouteExportExcelRows(members, start, end) {
+  const rows = [];
+  for (const user of members) {
+    for (const date of iterateDates(start, end)) {
+      const dateKey = getDateKey(date);
+      const record = state.routeRecords.find((item) => String(item.usuario) === String(user.id) && toDateKey(item.data) === dateKey);
+      const optional = !isRequiredDay(date);
+      rows.push([
+        formatDate(date),
+        user.nome,
+        user.usuario,
+        record ? "Entregue" : (optional ? "Opcional" : "Nao entregou"),
+        record ? formatRouteProducts(record.produtos) : "-",
+        record?.total_entregues ?? "-",
+        buildPrintImageCell(record),
+        buildPrintReference(record),
+        record ? "Cumpriu a rota" : (optional ? "Dia opcional" : "Sem entrega no periodo"),
+      ]);
+    }
+  }
+  return rows;
+}
+
 function buildPrintReference(record) {
   if (!record?.print) return "Sem print";
   const when = record.data ? formatDateTime(new Date(record.data)) : "data indisponivel";
   return `Painel > Ver print | Registro ${record.id || "-"} | ${when}`;
+}
+
+function buildPrintImageCell(record) {
+  if (!record?.print) return "Sem print";
+  return {
+    html: `<img src="${escapeHtml(record.print)}" alt="Print do registro ${escapeHtml(String(record.id || ""))}" />`,
+  };
 }
 
 function iterateDates(start, end) {
