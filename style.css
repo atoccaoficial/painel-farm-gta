@@ -564,6 +564,13 @@ input[type="file"] {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.btn-compact {
+  min-height: 34px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
