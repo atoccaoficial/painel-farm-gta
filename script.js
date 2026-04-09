@@ -39,6 +39,7 @@ const els = {
   heroObligationCard: document.getElementById("heroObligationCard"),
   heroObligation: document.getElementById("heroObligation"),
   heroObligationDescription: document.getElementById("heroObligationDescription"),
+  heroDirtyMoneyLabel: document.getElementById("heroDirtyMoneyLabel"),
   heroDirtyMoney: document.getElementById("heroDirtyMoney"),
   heroTopMember: document.getElementById("heroTopMember"),
   heroTopMemberDescription: document.getElementById("heroTopMemberDescription"),
@@ -299,6 +300,7 @@ function renderShell() {
   const ranking = isRouteTab ? computeRouteRanking(weeklyRouteRecords) : computeRanking(weeklyRecords);
   const topMember = ranking.find((i) => i.deliveries > 0);
   const pending = isReportsTab ? [] : (isRouteTab ? getPendingRouteMembers() : getPendingMembers());
+  const totalFactionMoney = sumBy(state.records, "dinheiro");
   els.heroObligationCard.classList.toggle("hero-card-alert", requiredToday);
   els.heroObligationCard.classList.toggle("hero-card-weekend", !requiredToday);
   els.sidebarDateLabel.textContent = `${formatDate(today)} - ${capitalize(getWeekdayLabel(today))}`;
@@ -314,15 +316,16 @@ function renderShell() {
   els.miniDelivered.textContent = String(isRouteTab ? todayRouteRecords.length : todayRecords.length);
   els.miniPending.textContent = String(pending.length);
   els.miniWeekly.textContent = String(isRouteTab ? weeklyRouteRecords.length : weeklyRecords.length);
+  els.heroDirtyMoneyLabel.textContent = isReportsTab ? "Registros totais" : (!isRouteTab ? "Dinheiro sujo FAC" : "Itens rota hoje");
   els.heroObligation.textContent = isReportsTab ? "Exportacao liberada" : (!isRouteTab ? (requiredToday ? "Entrega obrigatoria" : "Entrega opcional") : (requiredToday ? "Rota obrigatoria" : "Rota opcional"));
   els.heroObligationDescription.textContent = isReportsTab
     ? "Use a aba de relatorios para baixar Excel da farm principal e da farm de rota com foto."
     : (!isRouteTab ? (requiredToday ? "Segunda a sexta os membros precisam enviar a meta diaria no banco." : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.") : (requiredToday ? "A rota tambem possui controle proprio de entrega e pendencias." : "Fim de semana continua entrando no ranking da rota, sem pendencia obrigatoria."));
-  els.heroDirtyMoney.textContent = isReportsTab ? `${state.records.length + state.routeRecords.length} registros` : (!isRouteTab ? formatMoney(sumBy(todayRecords, "dinheiro")) : `${getTodayRouteTotal()} itens`);
+  els.heroDirtyMoney.textContent = isReportsTab ? `${state.records.length + state.routeRecords.length} registros` : (!isRouteTab ? formatMoney(totalFactionMoney) : `${getTodayRouteTotal()} itens`);
   els.heroTopMember.textContent = topMember ? topMember.memberName : "Sem entregas";
   els.heroTopMemberDescription.textContent = isReportsTab
     ? "Relatorios usam o periodo e o membro selecionados na nova aba administrativa."
-    : (!isRouteTab ? (topMember ? `${topMember.deliveries} entrega(s) registradas nesta semana.` : "O ranking semanal sera preenchido quando houver registros.") : (topMember ? `${topMember.deliveries} item(ns) entregues na rota nesta semana.` : "O ranking da rota sera preenchido quando houver registros."));
+    : (!isRouteTab ? (topMember ? `${topMember.deliveries} dia(s) de entrega registrados nesta semana.` : "O ranking semanal sera preenchido quando houver registros.") : (topMember ? `${topMember.deliveries} item(ns) entregues na rota nesta semana.` : "O ranking da rota sera preenchido quando houver registros."));
   els.heroMissedCount.textContent = String(pending.length);
   els.missingSummary.textContent = isReportsTab ? "Sem pendencias" : (!isRouteTab ? (requiredToday ? `${pending.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade") : (requiredToday ? `${pending.length} pendencia(s) de rota` : "Fim de semana sem obrigatoriedade"));
 }
@@ -332,9 +335,10 @@ function renderFarm() {
   els.autoDate.textContent = formatDateTime(new Date());
   const rows = getDailyStatusRows();
   els.dailyStatusBody.innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.farm)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
-  const own = state.records.filter((r) => String(r.usuario) === String(state.currentUser.id)).sort((a, b) => new Date(b.data) - new Date(a.data));
-  els.memberHistorySummary.textContent = `${own.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())).length} entrega(s) nesta semana`;
-  els.memberHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(6, "Nenhuma entrega encontrada para esta conta.");
+  const own = getLastThirtyDaysRecords(state.records.filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
+  const ownEquivalentDays = own.reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0);
+  els.memberHistorySummary.textContent = `${ownEquivalentDays} dia(s) de entrega nos ultimos 30 dias`;
+  els.memberHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(6, "Nenhuma entrega encontrada nos ultimos 30 dias.");
   renderAdminFarm();
 }
 
@@ -342,7 +346,7 @@ function renderAdminFarm() {
   const records = [...state.records].sort((a, b) => new Date(b.data) - new Date(a.data));
   els.recordsBody.innerHTML = records.length ? records.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(7, "Nenhum registro encontrado.");
   const ranking = computeRanking(getCurrentWeekRecords()).filter((i) => i.deliveries > 0);
-  els.rankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} entrega(s) registradas na semana atual.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas nesta semana.</div>`;
+  els.rankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} dia(s) de entrega registrados na semana atual.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas nesta semana.</div>`;
   const missing = getPendingMembers();
   els.missingList.innerHTML = missing.length ? missing.map((u) => `<article class="stack-item"><strong>${escapeHtml(u.nome)}</strong><p>Ainda nao registrou a meta do dia.</p></article>`).join("") : `<div class="empty-state">${isRequiredDay() ? "Todos os membros entregaram hoje." : "Hoje nao ha pendencias obrigatorias."}</div>`;
   const users = [...state.users].sort((a, b) => a.nome.localeCompare(b.nome));
@@ -358,12 +362,12 @@ function renderRoute() {
   renderRouteSummary();
   const routeRows = getRouteStatusRows();
   const routeMissing = getPendingRouteMembers();
-  const own = state.routeRecords.filter((r) => String(r.usuario) === String(state.currentUser.id)).sort((a, b) => new Date(b.data) - new Date(a.data));
+  const own = getLastThirtyDaysRecords(state.routeRecords.filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
   els.routeMissingSummary.textContent = isRequiredDay() ? `${routeMissing.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade";
   els.routeStatusBody.innerHTML = routeRows.length ? routeRows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.produtos)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
   els.routeMissingList.innerHTML = routeMissing.length ? routeMissing.map((u) => `<article class="stack-item"><strong>${escapeHtml(u.nome)}</strong><p>Ainda nao registrou a rota do dia.</p></article>`).join("") : `<div class="empty-state">${isRequiredDay() ? "Todos os membros entregaram a rota hoje." : "Hoje nao ha pendencias obrigatorias na rota."}</div>`;
-  els.routeHistorySummary.textContent = `${own.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())).length} rota(s) nesta semana`;
-  els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada para esta conta.");
+  els.routeHistorySummary.textContent = `${own.length} rota(s) nos ultimos 30 dias`;
+  els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada nos ultimos 30 dias.");
   const routeRecords = [...state.routeRecords].sort((a, b) => new Date(b.data) - new Date(a.data));
   els.routeRecordsBody.innerHTML = routeRecords.length ? routeRecords.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(6, "Nenhum registro de rota encontrado.");
   const ranking = computeRouteRanking(getCurrentWeekRouteRecords()).filter((i) => i.deliveries > 0);
@@ -474,11 +478,26 @@ function hasDeliveredToday(userId) { return state.records.some((r) => String(r.u
 function hasRouteToday(userId) { return state.routeRecords.some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
 function getDailyStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.records.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", farm: record.farm, data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", farm: "-", data: formatDate(new Date()) }; }); }
 function getRouteStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.routeRecords.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", produtos: formatRouteProducts(record.produtos), data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", produtos: "-", data: formatDate(new Date()) }; }); }
-function computeRanking(records) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).length })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
+function computeRanking(records) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
 function computeRouteRanking(records = getCurrentWeekRouteRecords()) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).reduce((t, r) => t + Number(r.total_entregues || 0), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
-function buildWeeklyArchive(records, valueField) { const grouped = new Map(); records.forEach((r) => { const key = getWeekKey(new Date(r.data)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(r); }); return Array.from(grouped.entries()).map(([weekKey, list]) => ({ weekKey, totalDeliveries: list.length, totalValue: list.reduce((t, r) => t + Number(r[valueField] || 0), 0), topMember: (computeRanking(list).find((i) => i.deliveries > 0)?.memberName || "Sem entregas") })).sort((a, b) => b.weekKey.localeCompare(a.weekKey)); }
+function buildWeeklyArchive(records, valueField) { const grouped = new Map(); records.forEach((r) => { const key = getWeekKey(new Date(r.data)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(r); }); return Array.from(grouped.entries()).map(([weekKey, list]) => ({ weekKey, totalDeliveries: list.reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0), totalValue: list.reduce((t, r) => t + Number(r[valueField] || 0), 0), topMember: (computeRanking(list).find((i) => i.deliveries > 0)?.memberName || "Sem entregas") })).sort((a, b) => b.weekKey.localeCompare(a.weekKey)); }
 function getTodayRouteTotal() { return state.routeRecords.filter((r) => toDateKey(r.data) === getDateKey()).reduce((t, r) => t + Number(r.total_entregues || 0), 0); }
 function formatRouteProducts(produtos) { return Array.isArray(produtos) ? produtos.map((p) => `${p.nome} (${p.quantidade})`).join(", ") : "Sem produtos"; }
+function getFarmDeliveryEquivalent(record) {
+  if (!record) return 0;
+  const farmType = String(record.farm || "").trim().toLowerCase();
+  const materials = Number(record.materiais || 0);
+  if (farmType !== "drogas") return 1;
+  return Math.max(1, Math.floor(materials / 200) || 0);
+}
+
+function getLastThirtyDaysRecords(records) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 29);
+  return records.filter((record) => new Date(record.data) >= start);
+}
+
 function exportData() { const payload = { generatedAt: new Date().toISOString(), users: state.users, records: state.records, routeRecords: state.routeRecords }; const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `painel-fazenda-backup-${getDateKey()}.json`; link.click(); URL.revokeObjectURL(url); }
 function exportFarmPeriodReport() {
   if (!isAdmin()) return;
