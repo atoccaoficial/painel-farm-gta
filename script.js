@@ -14,10 +14,13 @@ const els = {
   appView: document.getElementById("appView"),
   adminSection: document.getElementById("adminSection"),
   adminRouteSection: document.getElementById("adminRouteSection"),
+  reportsSection: document.getElementById("reportsSection"),
   farmTabView: document.getElementById("farmTabView"),
   routeTabView: document.getElementById("routeTabView"),
+  reportsTabView: document.getElementById("reportsTabView"),
   farmTabButton: document.getElementById("farmTabButton"),
   routeTabButton: document.getElementById("routeTabButton"),
+  reportsTabButton: document.getElementById("reportsTabButton"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
@@ -150,6 +153,7 @@ function bindEvents() {
   els.imageModal.addEventListener("click", (e) => { if (e.target.dataset.close === "true") closeModal(); });
   els.farmTabButton.addEventListener("click", () => switchTab("farm"));
   els.routeTabButton.addEventListener("click", () => switchTab("route"));
+  els.reportsTabButton.addEventListener("click", () => switchTab("reports"));
   document.querySelectorAll("[data-route-product],[data-route-quantity]").forEach((el) => el.addEventListener("input", renderRouteSummary));
 }
 
@@ -270,12 +274,15 @@ function renderApp() {
   els.authView.classList.toggle("hidden", loggedIn);
   els.appView.classList.toggle("hidden", !loggedIn);
   if (!loggedIn) return;
+  if (state.activeTab === "reports" && !isAdmin()) state.activeTab = "farm";
   switchTab(state.activeTab, false);
   renderShell();
   renderFarm();
   renderRoute();
   els.adminSection.classList.toggle("hidden", !isAdmin());
   els.adminRouteSection.classList.toggle("hidden", !isAdmin());
+  els.reportsSection.classList.toggle("hidden", !isAdmin());
+  els.reportsTabButton.classList.toggle("hidden", !isAdmin());
   els.exportMembersExcelButton.classList.toggle("hidden", !isAdmin());
 }
 
@@ -283,43 +290,41 @@ function renderShell() {
   const user = state.currentUser;
   const today = new Date();
   const requiredToday = isRequiredDay(today);
+  const isRouteTab = state.activeTab === "route";
+  const isReportsTab = state.activeTab === "reports";
   const todayRecords = getTodayRecords();
   const weeklyRecords = getCurrentWeekRecords();
   const todayRouteRecords = getTodayRouteRecords();
   const weeklyRouteRecords = getCurrentWeekRouteRecords();
-  const ranking = state.activeTab === "farm" ? computeRanking(weeklyRecords) : computeRouteRanking(weeklyRouteRecords);
+  const ranking = isRouteTab ? computeRouteRanking(weeklyRouteRecords) : computeRanking(weeklyRecords);
   const topMember = ranking.find((i) => i.deliveries > 0);
-  const pending = state.activeTab === "farm" ? getPendingMembers() : getPendingRouteMembers();
+  const pending = isReportsTab ? [] : (isRouteTab ? getPendingRouteMembers() : getPendingMembers());
   els.heroObligationCard.classList.toggle("hero-card-alert", requiredToday);
   els.heroObligationCard.classList.toggle("hero-card-weekend", !requiredToday);
   els.sidebarDateLabel.textContent = `${formatDate(today)} - ${capitalize(getWeekdayLabel(today))}`;
-  els.sidebarModeLabel.textContent = state.activeTab === "farm"
-    ? (requiredToday ? "Meta obrigatoria" : "Meta opcional")
-    : (requiredToday ? "Rota obrigatoria" : "Rota opcional");
+  els.sidebarModeLabel.textContent = isReportsTab
+    ? "Modo relatorios"
+    : (isRouteTab ? (requiredToday ? "Rota obrigatoria" : "Rota opcional") : (requiredToday ? "Meta obrigatoria" : "Meta opcional"));
   els.sidebarUserName.textContent = user.nome;
   els.sidebarUserRole.textContent = user.tipo === "admin" ? "Administrador" : "Membro";
-  els.pageTitle.textContent = state.activeTab === "farm" ? (user.tipo === "admin" ? "Painel Administrativo" : "Painel do Membro") : "Farm de rota";
-  els.pageSubtitle.textContent = state.activeTab === "farm" ? "Monitoramento em tempo real de farms, ranking e pendencias." : "Checklist de produtos da rota com print obrigatorio.";
-  els.requiredBadge.textContent = requiredToday ? "Obrigatorio hoje" : "Opcional hoje";
-  els.deliveryBadge.textContent = state.activeTab === "farm" ? (hasDeliveredToday(user.id) ? "Sua entrega esta registrada" : "Sua entrega ainda esta pendente") : (hasRouteToday(user.id) ? "Sua rota esta registrada" : "Sua rota ainda esta pendente");
-  els.miniDelivered.textContent = String(state.activeTab === "farm" ? todayRecords.length : todayRouteRecords.length);
+  els.pageTitle.textContent = isReportsTab ? "Relatorios" : (isRouteTab ? "Farm de rota" : (user.tipo === "admin" ? "Painel Administrativo" : "Painel do Membro"));
+  els.pageSubtitle.textContent = isReportsTab ? "Exportacoes administrativas em Excel com foto dos prints." : (isRouteTab ? "Checklist de produtos da rota com print obrigatorio." : "Monitoramento em tempo real de farms, ranking e pendencias.");
+  els.requiredBadge.textContent = isReportsTab ? "Somente adm" : (requiredToday ? "Obrigatorio hoje" : "Opcional hoje");
+  els.deliveryBadge.textContent = isReportsTab ? "2 exportacoes disponiveis" : (!isRouteTab ? (hasDeliveredToday(user.id) ? "Sua entrega esta registrada" : "Sua entrega ainda esta pendente") : (hasRouteToday(user.id) ? "Sua rota esta registrada" : "Sua rota ainda esta pendente"));
+  els.miniDelivered.textContent = String(isRouteTab ? todayRouteRecords.length : todayRecords.length);
   els.miniPending.textContent = String(pending.length);
-  els.miniWeekly.textContent = String(state.activeTab === "farm" ? weeklyRecords.length : weeklyRouteRecords.length);
-  els.heroObligation.textContent = state.activeTab === "farm"
-    ? (requiredToday ? "Entrega obrigatoria" : "Entrega opcional")
-    : (requiredToday ? "Rota obrigatoria" : "Rota opcional");
-  els.heroObligationDescription.textContent = state.activeTab === "farm"
-    ? (requiredToday ? "Segunda a sexta os membros precisam enviar a meta diaria no banco." : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.")
-    : (requiredToday ? "A rota tambem possui controle proprio de entrega e pendencias." : "Fim de semana continua entrando no ranking da rota, sem pendencia obrigatoria.");
-  els.heroDirtyMoney.textContent = state.activeTab === "farm" ? formatMoney(sumBy(todayRecords, "dinheiro")) : `${getTodayRouteTotal()} itens`;
+  els.miniWeekly.textContent = String(isRouteTab ? weeklyRouteRecords.length : weeklyRecords.length);
+  els.heroObligation.textContent = isReportsTab ? "Exportacao liberada" : (!isRouteTab ? (requiredToday ? "Entrega obrigatoria" : "Entrega opcional") : (requiredToday ? "Rota obrigatoria" : "Rota opcional"));
+  els.heroObligationDescription.textContent = isReportsTab
+    ? "Use a aba de relatorios para baixar Excel da farm principal e da farm de rota com foto."
+    : (!isRouteTab ? (requiredToday ? "Segunda a sexta os membros precisam enviar a meta diaria no banco." : "Fim de semana continua entrando no ranking, mas sem pendencia obrigatoria.") : (requiredToday ? "A rota tambem possui controle proprio de entrega e pendencias." : "Fim de semana continua entrando no ranking da rota, sem pendencia obrigatoria."));
+  els.heroDirtyMoney.textContent = isReportsTab ? `${state.records.length + state.routeRecords.length} registros` : (!isRouteTab ? formatMoney(sumBy(todayRecords, "dinheiro")) : `${getTodayRouteTotal()} itens`);
   els.heroTopMember.textContent = topMember ? topMember.memberName : "Sem entregas";
-  els.heroTopMemberDescription.textContent = state.activeTab === "farm"
-    ? (topMember ? `${topMember.deliveries} entrega(s) registradas nesta semana.` : "O ranking semanal sera preenchido quando houver registros.")
-    : (topMember ? `${topMember.deliveries} item(ns) entregues na rota nesta semana.` : "O ranking da rota sera preenchido quando houver registros.");
+  els.heroTopMemberDescription.textContent = isReportsTab
+    ? "Relatorios usam o periodo e o membro selecionados na nova aba administrativa."
+    : (!isRouteTab ? (topMember ? `${topMember.deliveries} entrega(s) registradas nesta semana.` : "O ranking semanal sera preenchido quando houver registros.") : (topMember ? `${topMember.deliveries} item(ns) entregues na rota nesta semana.` : "O ranking da rota sera preenchido quando houver registros."));
   els.heroMissedCount.textContent = String(pending.length);
-  els.missingSummary.textContent = state.activeTab === "farm"
-    ? (requiredToday ? `${pending.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade")
-    : (requiredToday ? `${pending.length} pendencia(s) de rota` : "Fim de semana sem obrigatoriedade");
+  els.missingSummary.textContent = isReportsTab ? "Sem pendencias" : (!isRouteTab ? (requiredToday ? `${pending.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade") : (requiredToday ? `${pending.length} pendencia(s) de rota` : "Fim de semana sem obrigatoriedade"));
 }
 
 function renderFarm() {
@@ -397,8 +402,10 @@ function switchTab(tab, rerender = true) {
   state.activeTab = tab;
   els.farmTabButton.classList.toggle("is-active", tab === "farm");
   els.routeTabButton.classList.toggle("is-active", tab === "route");
+  els.reportsTabButton.classList.toggle("is-active", tab === "reports");
   els.farmTabView.classList.toggle("hidden", tab !== "farm");
   els.routeTabView.classList.toggle("hidden", tab !== "route");
+  els.reportsTabView.classList.toggle("hidden", tab !== "reports");
   if (rerender) renderApp();
 }
 
@@ -663,6 +670,31 @@ function buildFarmExportRows(members, start, end) {
         record?.materiais ?? "-",
         record ? Number(record.dinheiro || 0).toFixed(2) : "-",
         record?.restantes ?? "-",
+        buildPrintReference(record),
+        record ? "Cumpriu e ganhou" : (optional ? "Dia opcional" : "Sem entrega no periodo"),
+      ]);
+    }
+  }
+  return rows;
+}
+
+function buildFarmExportExcelRows(members, start, end) {
+  const rows = [];
+  for (const user of members) {
+    for (const date of iterateDates(start, end)) {
+      const dateKey = getDateKey(date);
+      const record = state.records.find((item) => String(item.usuario) === String(user.id) && toDateKey(item.data) === dateKey);
+      const optional = !isRequiredDay(date);
+      rows.push([
+        formatDate(date),
+        user.nome,
+        user.usuario,
+        record ? "Entregue" : (optional ? "Opcional" : "Nao entregou"),
+        record?.farm || "-",
+        record?.materiais ?? "-",
+        record ? Number(record.dinheiro || 0).toFixed(2) : "-",
+        record?.restantes ?? "-",
+        buildPrintImageCell(record),
         buildPrintReference(record),
         record ? "Cumpriu e ganhou" : (optional ? "Dia opcional" : "Sem entrega no periodo"),
       ]);
