@@ -55,6 +55,7 @@ const els = {
   autoDate: document.getElementById("autoDate"),
   farmMessage: document.getElementById("farmMessage"),
   clearFarmFormButton: document.getElementById("clearFarmFormButton"),
+  memberHistorySection: document.getElementById("memberHistorySection"),
   dailyStatusBody: document.getElementById("dailyStatusBody"),
   memberHistoryBody: document.getElementById("memberHistoryBody"),
   memberHistorySummary: document.getElementById("memberHistorySummary"),
@@ -74,6 +75,7 @@ const els = {
   routeMissingSummary: document.getElementById("routeMissingSummary"),
   routeStatusBody: document.getElementById("routeStatusBody"),
   routeMissingList: document.getElementById("routeMissingList"),
+  routeHistorySection: document.getElementById("routeHistorySection"),
   routeHistoryBody: document.getElementById("routeHistoryBody"),
   routeHistorySummary: document.getElementById("routeHistorySummary"),
   routeRecordsBody: document.getElementById("routeRecordsBody"),
@@ -107,6 +109,11 @@ const els = {
   imageModal: document.getElementById("imageModal"),
   modalImage: document.getElementById("modalImage"),
   closeModalButton: document.getElementById("closeModalButton"),
+  noticeModal: document.getElementById("noticeModal"),
+  noticeModalTitle: document.getElementById("noticeModalTitle"),
+  noticeModalText: document.getElementById("noticeModalText"),
+  closeNoticeModalButton: document.getElementById("closeNoticeModalButton"),
+  confirmNoticeModalButton: document.getElementById("confirmNoticeModalButton"),
 };
 
 initialize();
@@ -152,6 +159,9 @@ function bindEvents() {
   els.exportButton.addEventListener("click", exportData);
   els.closeModalButton.addEventListener("click", closeModal);
   els.imageModal.addEventListener("click", (e) => { if (e.target.dataset.close === "true") closeModal(); });
+  els.closeNoticeModalButton.addEventListener("click", closeNoticeModal);
+  els.confirmNoticeModalButton.addEventListener("click", closeNoticeModal);
+  els.noticeModal.addEventListener("click", (e) => { if (e.target.dataset.noticeClose === "true") closeNoticeModal(); });
   els.farmTabButton.addEventListener("click", () => switchTab("farm"));
   els.routeTabButton.addEventListener("click", () => switchTab("route"));
   els.reportsTabButton.addEventListener("click", () => switchTab("reports"));
@@ -168,8 +178,10 @@ function setupSupabase() {
 
 async function handleLogin(event) {
   event.preventDefault();
+  if (state.loading) return;
   clearMessage(els.loginMessage);
   try {
+    setLoading(true);
     const user = await loginUser(els.loginUsername.value.trim().toLowerCase(), els.loginPassword.value.trim());
     if (!user) return showMessage(els.loginMessage, "Usuario ou senha invalidos.", "error");
     state.currentUser = user;
@@ -178,55 +190,81 @@ async function handleLogin(event) {
     await refreshData();
     renderApp();
   } catch (error) { showMessage(els.loginMessage, getErrorMessage(error), "error"); }
+  finally { setLoading(false); }
 }
 
 async function handleFarmSubmit(event) {
   event.preventDefault();
+  if (state.loading) return;
   clearMessage(els.farmMessage);
-  const payload = {
-    usuario: state.currentUser.id,
-    farm: els.farmType.value.trim(),
-    materiais: Number(els.materialsReceived.value),
-    dinheiro: Number(els.dirtyMoney.value),
-    restantes: Number(els.materialsRemaining.value),
-    print: await fileToDataUrl(els.chestPrint.files[0]),
-    data: new Date().toISOString(),
-    status: "Entregue",
-  };
-  const err = validateFarmPayload(payload);
-  if (err) return showMessage(els.farmMessage, err, "error");
-  const existing = state.records.find((r) => String(r.usuario) === String(state.currentUser.id) && toDateKey(r.data) === getDateKey());
-  await saveFarmRecord(existing?.id, payload);
-  await refreshData();
-  resetFarmForm();
-  showMessage(els.farmMessage, existing ? "Entrega atualizada com sucesso." : "Entrega registrada com sucesso.", "success");
-  renderApp();
+  try {
+    setLoading(true);
+    const payload = {
+      usuario: state.currentUser.id,
+      farm: els.farmType.value.trim(),
+      materiais: Number(els.materialsReceived.value),
+      dinheiro: Number(els.dirtyMoney.value),
+      restantes: Number(els.materialsRemaining.value),
+      print: await fileToDataUrl(els.chestPrint.files[0]),
+      data: new Date().toISOString(),
+      status: "Entregue",
+    };
+    const err = validateFarmPayload(payload);
+    if (err) return showMessage(els.farmMessage, err, "error");
+    const existing = getCanonicalFarmRecords().find((r) => String(r.usuario) === String(state.currentUser.id) && toDateKey(r.data) === getDateKey());
+    if (existing) {
+      openNoticeModal("Meta ja enviada hoje", "Esse membro ja registrou a meta principal hoje. Um novo envio so podera ser feito no proximo dia.");
+      return;
+    }
+    await saveFarmRecord(null, payload);
+    await refreshData();
+    resetFarmForm();
+    showMessage(els.farmMessage, existing ? "Entrega atualizada com sucesso." : "Entrega registrada com sucesso.", "success");
+    renderApp();
+  } catch (error) {
+    showMessage(els.farmMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function handleRouteSubmit(event) {
   event.preventDefault();
+  if (state.loading) return;
   clearMessage(els.routeMessage);
-  const produtos = collectRouteProducts();
-  if (!produtos.length) return showMessage(els.routeMessage, "Selecione pelo menos um produto da rota.", "error");
-  if (!els.routePrint.files[0]) return showMessage(els.routeMessage, "O print do bau e obrigatorio.", "error");
-  const payload = {
-    usuario: state.currentUser.id,
-    produtos,
-    total_entregues: produtos.reduce((t, p) => t + p.quantidade, 0),
-    print: await fileToDataUrl(els.routePrint.files[0]),
-    data: new Date().toISOString(),
-    status: "Entregue",
-  };
-  const existing = state.routeRecords.find((r) => String(r.usuario) === String(state.currentUser.id) && toDateKey(r.data) === getDateKey());
-  await saveRouteRecord(existing?.id, payload);
-  await refreshData();
-  resetRouteForm();
-  showMessage(els.routeMessage, existing ? "Rota atualizada com sucesso." : "Rota registrada com sucesso.", "success");
-  renderApp();
+  try {
+    setLoading(true);
+    const produtos = collectRouteProducts();
+    if (!produtos.length) return showMessage(els.routeMessage, "Selecione pelo menos um produto da rota.", "error");
+    if (!els.routePrint.files[0]) return showMessage(els.routeMessage, "O print do bau e obrigatorio.", "error");
+    const payload = {
+      usuario: state.currentUser.id,
+      produtos,
+      total_entregues: produtos.reduce((t, p) => t + p.quantidade, 0),
+      print: await fileToDataUrl(els.routePrint.files[0]),
+      data: new Date().toISOString(),
+      status: "Entregue",
+    };
+    const existing = getCanonicalRouteRecords().find((r) => String(r.usuario) === String(state.currentUser.id) && toDateKey(r.data) === getDateKey());
+    if (existing) {
+      openNoticeModal("Rota ja enviada hoje", "Esse membro ja registrou a farm de rota hoje. Um novo envio so podera ser feito no proximo dia.");
+      return;
+    }
+    await saveRouteRecord(null, payload);
+    await refreshData();
+    resetRouteForm();
+    showMessage(els.routeMessage, existing ? "Rota atualizada com sucesso." : "Rota registrada com sucesso.", "success");
+    renderApp();
+  } catch (error) {
+    showMessage(els.routeMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function handleMemberSubmit(event) {
   event.preventDefault();
+  if (state.loading) return;
   clearMessage(els.memberMessage);
   if (!isAdmin()) return;
   const editingId = els.memberId.value.trim();
@@ -234,11 +272,18 @@ async function handleMemberSubmit(event) {
   const duplicate = state.users.some((u) => u.usuario.toLowerCase() === payload.usuario && String(u.id) !== editingId);
   if (!payload.nome || !payload.usuario || !payload.senha || !payload.tipo) return showMessage(els.memberMessage, "Preencha todos os campos do membro.", "error");
   if (duplicate) return showMessage(els.memberMessage, "Ja existe um membro usando esse usuario.", "error");
-  await saveMember(editingId, payload);
-  await refreshData();
-  resetMemberForm();
-  showMessage(els.memberMessage, editingId ? "Membro atualizado com sucesso." : "Membro cadastrado com sucesso.", "success");
-  renderApp();
+  try {
+    setLoading(true);
+    await saveMember(editingId, payload);
+    await refreshData();
+    resetMemberForm();
+    showMessage(els.memberMessage, editingId ? "Membro atualizado com sucesso." : "Membro cadastrado com sucesso.", "success");
+    renderApp();
+  } catch (error) {
+    showMessage(els.memberMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function handleMemberActions(event) {
@@ -331,11 +376,18 @@ function renderShell() {
 }
 
 function renderFarm() {
+  const isMember = state.currentUser.tipo === "membro";
+  els.farmForm.closest(".card").classList.toggle("hidden", !isMember);
+  els.memberHistorySection.classList.toggle("hidden", !isMember);
+  if (!isMember) {
+    renderAdminFarm();
+    return;
+  }
   els.farmMemberName.value = state.currentUser.nome;
   els.autoDate.textContent = formatDateTime(new Date());
   const rows = getDailyStatusRows();
   els.dailyStatusBody.innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.farm)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
-  const own = getLastThirtyDaysRecords(state.records.filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
+  const own = getLastThirtyDaysRecords(getCanonicalFarmRecords().filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
   const ownEquivalentDays = own.reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0);
   els.memberHistorySummary.textContent = `${ownEquivalentDays} dia(s) de entrega nos ultimos 30 dias`;
   els.memberHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(6, "Nenhuma entrega encontrada nos ultimos 30 dias.");
@@ -343,7 +395,7 @@ function renderFarm() {
 }
 
 function renderAdminFarm() {
-  const records = [...state.records].sort((a, b) => new Date(b.data) - new Date(a.data));
+  const records = [...getCanonicalFarmRecords()].sort((a, b) => new Date(b.data) - new Date(a.data));
   els.recordsBody.innerHTML = records.length ? records.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(7, "Nenhum registro encontrado.");
   const ranking = computeRanking(getCurrentWeekRecords()).filter((i) => i.deliveries > 0);
   els.rankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} dia(s) de entrega registrados na semana atual.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas nesta semana.</div>`;
@@ -352,23 +404,26 @@ function renderAdminFarm() {
   const users = [...state.users].sort((a, b) => a.nome.localeCompare(b.nome));
   els.memberCounter.textContent = `${users.length} membro(s)`;
   els.membersBody.innerHTML = users.map((u) => `<tr><td>${escapeHtml(u.nome)}</td><td>${escapeHtml(u.usuario)}</td><td>${escapeHtml(u.tipo === "admin" ? "Admin" : "Membro")}</td><td><div class="action-row"><button class="action-button" type="button" data-action="edit" data-user-id="${u.id}">Editar</button><button class="action-button" type="button" data-action="delete" data-user-id="${u.id}">Excluir</button></div></td></tr>`).join("");
-  const archive = buildWeeklyArchive(state.records, "dinheiro");
+  const archive = buildWeeklyArchive(getCanonicalFarmRecords(), "dinheiro");
   els.weeklyArchive.innerHTML = archive.length ? archive.map((w) => `<article class="archive-card"><strong>Semana de ${escapeHtml(formatWeekKey(w.weekKey))}</strong><p>Total de entregas: ${escapeHtml(String(w.totalDeliveries))}</p><p>Dinheiro sujo: ${escapeHtml(formatMoney(w.totalValue))}</p><p>Lider: ${escapeHtml(w.topMember)}</p></article>`).join("") : `<div class="empty-state">O historico semanal sera montado automaticamente conforme as semanas avancarem.</div>`;
 }
 
 function renderRoute() {
+  const isMember = state.currentUser.tipo === "membro";
+  els.routeForm.closest(".card").classList.toggle("hidden", !isMember);
+  els.routeHistorySection.classList.toggle("hidden", !isMember);
   els.routeMemberName.value = state.currentUser.nome;
   els.routeAutoDate.textContent = formatDateTime(new Date());
   renderRouteSummary();
   const routeRows = getRouteStatusRows();
   const routeMissing = getPendingRouteMembers();
-  const own = getLastThirtyDaysRecords(state.routeRecords.filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
+  const own = getLastThirtyDaysRecords(getCanonicalRouteRecords().filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
   els.routeMissingSummary.textContent = isRequiredDay() ? `${routeMissing.length} pendencia(s) no dia` : "Fim de semana sem obrigatoriedade";
   els.routeStatusBody.innerHTML = routeRows.length ? routeRows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.produtos)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
   els.routeMissingList.innerHTML = routeMissing.length ? routeMissing.map((u) => `<article class="stack-item"><strong>${escapeHtml(u.nome)}</strong><p>Ainda nao registrou a rota do dia.</p></article>`).join("") : `<div class="empty-state">${isRequiredDay() ? "Todos os membros entregaram a rota hoje." : "Hoje nao ha pendencias obrigatorias na rota."}</div>`;
   els.routeHistorySummary.textContent = `${own.length} rota(s) nos ultimos 30 dias`;
   els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada nos ultimos 30 dias.");
-  const routeRecords = [...state.routeRecords].sort((a, b) => new Date(b.data) - new Date(a.data));
+  const routeRecords = [...getCanonicalRouteRecords()].sort((a, b) => new Date(b.data) - new Date(a.data));
   els.routeRecordsBody.innerHTML = routeRecords.length ? routeRecords.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(6, "Nenhum registro de rota encontrado.");
   const ranking = computeRouteRanking(getCurrentWeekRouteRecords()).filter((i) => i.deliveries > 0);
   els.routeRankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} item(ns) entregues na rota esta semana.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas de rota nesta semana.</div>`;
@@ -468,16 +523,18 @@ function resetFarmForm() { els.farmForm.reset(); els.materialsReceived.value = 2
 function resetRouteForm() { els.routeForm.reset(); document.querySelectorAll("[data-route-quantity]").forEach((i) => { i.value = 0; }); els.routeFileLabel.textContent = "Nenhum arquivo selecionado"; renderRouteSummary(); }
 function resetMemberForm() { els.memberForm.reset(); els.memberId.value = ""; els.memberRole.value = "membro"; els.memberFormMode.textContent = "Novo cadastro"; }
 function validateFarmPayload(payload) { if (!payload.farm || !payload.materiais || !payload.print) return "Preencha o farm principal corretamente."; if (!Number.isFinite(payload.dinheiro) || payload.dinheiro < 0 || !Number.isFinite(payload.restantes) || payload.restantes < 0) return "Revise os campos do formulario."; return ""; }
-function getTodayRecords() { return state.records.filter((r) => toDateKey(r.data) === getDateKey()); }
-function getCurrentWeekRecords() { return state.records.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
-function getTodayRouteRecords() { return state.routeRecords.filter((r) => toDateKey(r.data) === getDateKey()); }
-function getCurrentWeekRouteRecords() { return state.routeRecords.filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
-function getPendingMembers() { if (!isRequiredDay()) return []; return state.users.filter((u) => u.tipo === "membro" && !state.records.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
-function getPendingRouteMembers() { if (!isRequiredDay()) return []; return state.users.filter((u) => u.tipo === "membro" && !state.routeRecords.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
-function hasDeliveredToday(userId) { return state.records.some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
-function hasRouteToday(userId) { return state.routeRecords.some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
-function getDailyStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.records.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", farm: record.farm, data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", farm: "-", data: formatDate(new Date()) }; }); }
-function getRouteStatusRows() { return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = state.routeRecords.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", produtos: formatRouteProducts(record.produtos), data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", produtos: "-", data: formatDate(new Date()) }; }); }
+function getCanonicalFarmRecords() { return dedupeRecordsByUserAndDay(state.records); }
+function getCanonicalRouteRecords() { return dedupeRecordsByUserAndDay(state.routeRecords); }
+function getTodayRecords() { return getCanonicalFarmRecords().filter((r) => toDateKey(r.data) === getDateKey()); }
+function getCurrentWeekRecords() { return getCanonicalFarmRecords().filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
+function getTodayRouteRecords() { return getCanonicalRouteRecords().filter((r) => toDateKey(r.data) === getDateKey()); }
+function getCurrentWeekRouteRecords() { return getCanonicalRouteRecords().filter((r) => isSameWeek(toDateKey(r.data), getWeekKey())); }
+function getPendingMembers() { if (!isRequiredDay()) return []; const records = getCanonicalFarmRecords(); return state.users.filter((u) => u.tipo === "membro" && !records.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
+function getPendingRouteMembers() { if (!isRequiredDay()) return []; const records = getCanonicalRouteRecords(); return state.users.filter((u) => u.tipo === "membro" && !records.some((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey())); }
+function hasDeliveredToday(userId) { return getCanonicalFarmRecords().some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
+function hasRouteToday(userId) { return getCanonicalRouteRecords().some((r) => String(r.usuario) === String(userId) && toDateKey(r.data) === getDateKey()); }
+function getDailyStatusRows() { const records = getCanonicalFarmRecords(); return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = records.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", farm: record.farm, data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", farm: "-", data: formatDate(new Date()) }; }); }
+function getRouteStatusRows() { const records = getCanonicalRouteRecords(); return state.users.filter((u) => u.tipo === "membro").sort((a, b) => a.nome.localeCompare(b.nome)).map((u) => { const record = records.find((r) => String(r.usuario) === String(u.id) && toDateKey(r.data) === getDateKey()); if (record) return { nome: u.nome, status: "Entregue", statusClass: "status-delivered", produtos: formatRouteProducts(record.produtos), data: formatDateTime(new Date(record.data)) }; return { nome: u.nome, status: isRequiredDay() ? "Nao entregou" : "Opcional", statusClass: isRequiredDay() ? "status-missed" : "status-optional", produtos: "-", data: formatDate(new Date()) }; }); }
 function computeRanking(records) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
 function computeRouteRanking(records = getCurrentWeekRouteRecords()) { return state.users.filter((u) => u.tipo === "membro").map((u) => ({ userId: u.id, memberName: u.nome, deliveries: records.filter((r) => String(r.usuario) === String(u.id)).reduce((t, r) => t + Number(r.total_entregues || 0), 0) })).sort((a, b) => b.deliveries - a.deliveries || a.memberName.localeCompare(b.memberName)); }
 function buildWeeklyArchive(records, valueField) { const grouped = new Map(); records.forEach((r) => { const key = getWeekKey(new Date(r.data)); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(r); }); return Array.from(grouped.entries()).map(([weekKey, list]) => ({ weekKey, totalDeliveries: list.reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0), totalValue: list.reduce((t, r) => t + Number(r[valueField] || 0), 0), topMember: (computeRanking(list).find((i) => i.deliveries > 0)?.memberName || "Sem entregas") })).sort((a, b) => b.weekKey.localeCompare(a.weekKey)); }
@@ -489,6 +546,41 @@ function getFarmDeliveryEquivalent(record) {
   const materials = Number(record.materiais || 0);
   if (farmType !== "drogas") return 1;
   return Math.max(1, Math.floor(materials / 200) || 0);
+}
+
+function dedupeRecordsByUserAndDay(records) {
+  const unique = new Map();
+  records.forEach((record) => {
+    const key = `${record.usuario}:${toDateKey(record.data)}`;
+    const existing = unique.get(key);
+    if (!existing || new Date(record.data) > new Date(existing.data)) {
+      unique.set(key, record);
+    }
+  });
+  return Array.from(unique.values());
+}
+
+function setLoading(isLoading) {
+  state.loading = Boolean(isLoading);
+  [
+    els.loginUsername,
+    els.loginPassword,
+    els.farmType,
+    els.materialsReceived,
+    els.dirtyMoney,
+    els.materialsRemaining,
+    els.chestPrint,
+    els.routePrint,
+    els.memberName,
+    els.memberUsername,
+    els.memberPassword,
+    els.memberRole,
+    els.exportButton,
+    els.logoutButton,
+    els.logoutTopButton,
+  ].forEach((element) => {
+    if (element) element.disabled = state.loading;
+  });
 }
 
 function getLastThirtyDaysRecords(records) {
@@ -797,6 +889,8 @@ function updateFileLabel(input, target) { const file = input.files[0]; target.te
 function handleImageButtons(event) { const button = event.target.closest("[data-image]"); if (button) openModal(decodeURIComponent(button.dataset.image)); }
 function openModal(src) { els.modalImage.src = src; els.imageModal.classList.remove("hidden"); }
 function closeModal() { els.modalImage.src = ""; els.imageModal.classList.add("hidden"); }
+function openNoticeModal(title, text) { els.noticeModalTitle.textContent = title; els.noticeModalText.textContent = text; els.noticeModal.classList.remove("hidden"); }
+function closeNoticeModal() { els.noticeModal.classList.add("hidden"); }
 function showMessage(element, message, type) { element.textContent = message; element.className = `form-message ${type}`; }
 function clearMessage(element) { element.textContent = ""; element.className = "form-message"; }
 function getErrorMessage(error) { const message = error?.message || ""; if (message.includes("relation") || message.includes("does not exist")) return "As tabelas do banco ainda nao existem. Execute o SQL inicial e a migracao de rota."; if (message.includes("Failed to fetch")) return "Falha de conexao com o Supabase."; return message || "Nao foi possivel concluir a operacao."; }

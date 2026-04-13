@@ -348,13 +348,13 @@ button {
 }
 
 .hero-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .hero-card {
   position: relative;
   overflow: hidden;
-  min-height: 176px;
+  min-height: 158px;
 }
 
 .hero-card::after {
@@ -420,17 +420,25 @@ button {
 
 .hero-card strong {
   display: block;
-  margin: 18px 0 12px;
-  font-size: clamp(1.75rem, 3vw, 2.4rem);
+  margin: 14px 0 10px;
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .hero-card p {
   margin: 0;
-  line-height: 1.7;
+  line-height: 1.55;
+}
+
+#heroDirtyMoney,
+#heroTopMember {
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
 }
 
 .content-grid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
   align-items: start;
 }
 
@@ -794,6 +802,27 @@ tbody tr:hover {
   max-height: calc(92vh - 28px);
   object-fit: contain;
   border-radius: 20px;
+}
+
+.modal-content-notice {
+  width: min(92vw, 460px);
+  padding: 28px;
+}
+
+.notice-modal-body {
+  display: grid;
+  gap: 18px;
+  text-align: center;
+}
+
+.notice-modal-body h3,
+.notice-modal-body p {
+  margin: 0;
+}
+
+.notice-modal-body p {
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 .modal-close {
