@@ -500,7 +500,7 @@ async function fetchRecordPrint(table, id) {
     filters: { id: `eq.${id}` },
     limit: 1,
   });
-  return rows[0] || null;
+  return rows[0]?.print || "";
 }
 async function loginUser(usuario, senha) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { usuario: `eq.${usuario}`, senha: `eq.${senha}` }, limit: 1 }); return rows[0] || null; }
 async function getUserById(id) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { id: `eq.${id}` }, limit: 1 }); return rows[0] || null; }
