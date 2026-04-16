@@ -1,6 +1,7 @@
 const STORAGE_KEY = "painel-fazenda-gta";
 const SESSION_KEY = `${STORAGE_KEY}:sessionUserId`;
 const LEGACY_STORAGE_KEYS = ["painel-farm-gta-rp", "painel-fazenda-gta-rp-v2"];
+const PRINT_BUCKET = "farm-prints";
 const DEFAULT_SUPABASE_CONFIG = {
   url: "https://leypzjulxksqhxzuzjjb.supabase.co",
   anonKey: "sb_publishable_KFdDoU5eXIwtU5wAIK_MOg_qVKqSlfs",
@@ -90,6 +91,14 @@ const els = {
   routeExportMember: document.getElementById("routeExportMember"),
   exportRoutePeriodButton: document.getElementById("exportRoutePeriodButton"),
   resetRouteMonthButton: document.getElementById("resetRouteMonthButton"),
+  cleanupScope: document.getElementById("cleanupScope"),
+  cleanupStart: document.getElementById("cleanupStart"),
+  cleanupEnd: document.getElementById("cleanupEnd"),
+  cleanupPeriodButton: document.getElementById("cleanupPeriodButton"),
+  cleanupAllButton: document.getElementById("cleanupAllButton"),
+  cleanupMessage: document.getElementById("cleanupMessage"),
+  migrateLegacyPrintsButton: document.getElementById("migrateLegacyPrintsButton"),
+  migrationMessage: document.getElementById("migrationMessage"),
   memberForm: document.getElementById("memberForm"),
   memberId: document.getElementById("memberId"),
   memberName: document.getElementById("memberName"),
@@ -153,6 +162,9 @@ function bindEvents() {
   els.resetFarmMonthButton.addEventListener("click", resetFarmCurrentMonth);
   els.exportRoutePeriodButton.addEventListener("click", exportRoutePeriodReport);
   els.resetRouteMonthButton.addEventListener("click", resetRouteCurrentMonth);
+  els.cleanupPeriodButton.addEventListener("click", cleanupSelectedPeriod);
+  els.cleanupAllButton.addEventListener("click", cleanupAllHistory);
+  els.migrateLegacyPrintsButton.addEventListener("click", migrateLegacyPrints);
   els.exportMembersExcelButton.addEventListener("click", exportMembersExcel);
   els.logoutButton.addEventListener("click", logout);
   els.logoutTopButton.addEventListener("click", logout);
@@ -199,13 +211,14 @@ async function handleFarmSubmit(event) {
   clearMessage(els.farmMessage);
   try {
     setLoading(true);
+    const uploadedPrint = await uploadPrintFile(els.chestPrint.files[0], "meta", state.currentUser.id);
     const payload = {
       usuario: state.currentUser.id,
       farm: els.farmType.value.trim(),
       materiais: Number(els.materialsReceived.value),
       dinheiro: Number(els.dirtyMoney.value),
       restantes: Number(els.materialsRemaining.value),
-      print: await fileToDataUrl(els.chestPrint.files[0]),
+      print: uploadedPrint,
       data: new Date().toISOString(),
       status: "Entregue",
     };
@@ -237,11 +250,12 @@ async function handleRouteSubmit(event) {
     const produtos = collectRouteProducts();
     if (!produtos.length) return showMessage(els.routeMessage, "Selecione pelo menos um produto da rota.", "error");
     if (!els.routePrint.files[0]) return showMessage(els.routeMessage, "O print do bau e obrigatorio.", "error");
+    const uploadedPrint = await uploadPrintFile(els.routePrint.files[0], "rota", state.currentUser.id);
     const payload = {
       usuario: state.currentUser.id,
       produtos,
       total_entregues: produtos.reduce((t, p) => t + p.quantidade, 0),
-      print: await fileToDataUrl(els.routePrint.files[0]),
+      print: uploadedPrint,
       data: new Date().toISOString(),
       status: "Entregue",
     };
@@ -454,6 +468,8 @@ function syncExportFilters() {
     if (!els.farmExportEnd.value) els.farmExportEnd.value = defaults.endKey;
     if (!els.routeExportStart.value) els.routeExportStart.value = defaults.startKey;
     if (!els.routeExportEnd.value) els.routeExportEnd.value = defaults.endKey;
+    if (!els.cleanupStart.value) els.cleanupStart.value = defaults.startKey;
+    if (!els.cleanupEnd.value) els.cleanupEnd.value = defaults.endKey;
   }
 }
 
@@ -486,6 +502,12 @@ async function saveRouteRecord(existingId, payload) { if (existingId) return sup
 async function deleteMember(userId) { await supabaseDelete("registros", { usuario: `eq.${userId}` }); try { await supabaseDelete("registros_rota", { usuario: `eq.${userId}` }); } catch {} await supabaseDelete("usuarios", { id: `eq.${userId}` }); }
 async function ensureDefaultAdmin() { const users = await supabaseSelect("usuarios", { select: "id", limit: 1 }); if (!users.length) await supabaseInsert("usuarios", DEFAULT_ADMIN); }
 async function deleteRecordsInMonth(table, startDate, endDate) { return await supabaseDeleteRange(table, "data", startDate.toISOString(), endDate.toISOString()); }
+async function deleteRecordsByIds(table, ids) {
+  for (const chunk of chunkArray(ids, 100)) {
+    if (!chunk.length) continue;
+    await supabaseDeleteIn(table, "id", chunk);
+  }
+}
 
 async function supabaseSelect(table, options = {}) {
   const query = new URLSearchParams({ select: options.select || "*" });
@@ -498,6 +520,11 @@ async function supabaseSelect(table, options = {}) {
 async function supabaseInsert(table, payload) { return await supabaseRequest(`/rest/v1/${table}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) }); }
 async function supabasePatch(table, filters, payload) { const query = new URLSearchParams(); Object.entries(filters).forEach(([k, v]) => query.set(k, v)); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) }); }
 async function supabaseDelete(table, filters) { const query = new URLSearchParams(); Object.entries(filters).forEach(([k, v]) => query.set(k, v)); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "DELETE" }); }
+async function supabaseDeleteIn(table, field, values) {
+  const query = new URLSearchParams();
+  query.set(field, `in.(${values.join(",")})`);
+  return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "DELETE" });
+}
 async function supabaseDeleteRange(table, field, fromIso, toIso) { const query = new URLSearchParams(); query.append(field, `gte.${fromIso}`); query.append(field, `lt.${toIso}`); return await supabaseRequest(`/rest/v1/${table}?${query.toString()}`, { method: "DELETE" }); }
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${state.supabase.url}${path}`, { method: options.method || "GET", headers: { apikey: state.supabase.anonKey, Authorization: `Bearer ${state.supabase.anonKey}`, "Content-Type": "application/json", ...(options.headers || {}) }, body: options.body });
@@ -560,6 +587,157 @@ function dedupeRecordsByUserAndDay(records) {
   return Array.from(unique.values());
 }
 
+function isLegacyBase64Print(printValue) {
+  return String(printValue || "").startsWith("data:image/");
+}
+
+async function migrateSingleLegacyPrint(record, category) {
+  const blob = dataUrlToBlob(record.print);
+  const optimized = await optimizeImageBlob(blob);
+  const userId = record.usuario || "sem-usuario";
+  const path = `${category}/${toDateKey(record.data)}/${userId}-${record.id}.jpg`;
+  await storageUpload(path, optimized, "image/jpeg");
+  return getStoragePublicUrl(path);
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [meta, content] = String(dataUrl || "").split(",");
+  if (!meta || !content) throw new Error("Print antigo invalido para migracao.");
+  const mimeMatch = meta.match(/data:(.*?);base64/);
+  const mime = mimeMatch?.[1] || "image/jpeg";
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+async function uploadPrintFile(file, category, userId) {
+  if (!file) throw new Error("Selecione um print antes de enviar.");
+  const optimized = await optimizeImageFile(file);
+  const extension = "jpg";
+  const path = `${category}/${getDateKey()}/${userId}-${Date.now()}.${extension}`;
+  await storageUpload(path, optimized, "image/jpeg");
+  return getStoragePublicUrl(path);
+}
+
+async function storageUpload(path, blob, contentType) {
+  await fetch(`${state.supabase.url}/storage/v1/object/${PRINT_BUCKET}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: state.supabase.anonKey,
+      Authorization: `Bearer ${state.supabase.anonKey}`,
+      "Content-Type": contentType,
+      "x-upsert": "false",
+    },
+    body: blob,
+  }).then(async (response) => {
+    if (!response.ok) throw new Error(await response.text());
+  });
+}
+
+async function storageDelete(paths) {
+  const validPaths = paths.filter(Boolean);
+  for (const chunk of chunkArray(validPaths, 100)) {
+    if (!chunk.length) continue;
+    await fetch(`${state.supabase.url}/storage/v1/object/${PRINT_BUCKET}`, {
+      method: "DELETE",
+      headers: {
+        apikey: state.supabase.anonKey,
+        Authorization: `Bearer ${state.supabase.anonKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prefixes: chunk }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(await response.text());
+    });
+  }
+}
+
+function getStoragePublicUrl(path) {
+  return `${state.supabase.url}/storage/v1/object/public/${PRINT_BUCKET}/${path}`;
+}
+
+function getStoragePathFromPrintValue(printValue) {
+  const value = String(printValue || "");
+  const marker = `/storage/v1/object/public/${PRINT_BUCKET}/`;
+  const index = value.indexOf(marker);
+  if (index === -1) return null;
+  return value.slice(index + marker.length);
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function optimizeImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const reader = new FileReader();
+    reader.onload = () => { image.src = reader.result; };
+    reader.onerror = () => reject(new Error("Falha ao ler a imagem."));
+    image.onload = () => {
+      const maxWidth = 1600;
+      const maxHeight = 1600;
+      let { width, height } = image;
+      const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+      width = Math.max(1, Math.round(width * ratio));
+      height = Math.max(1, Math.round(height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) return reject(new Error("Falha ao preparar a imagem."));
+      context.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return reject(new Error("Falha ao otimizar a imagem."));
+        resolve(blob);
+      }, "image/jpeg", 0.82);
+    };
+    image.onerror = () => reject(new Error("Falha ao processar a imagem."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function optimizeImageBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(blob);
+    image.onload = () => {
+      const maxWidth = 1600;
+      const maxHeight = 1600;
+      let { width, height } = image;
+      const ratio = Math.min(maxWidth / width, maxHeight / height, 1);
+      width = Math.max(1, Math.round(width * ratio));
+      height = Math.max(1, Math.round(height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        URL.revokeObjectURL(url);
+        return reject(new Error("Falha ao preparar a imagem da migracao."));
+      }
+      context.drawImage(image, 0, 0, width, height);
+      canvas.toBlob((optimized) => {
+        URL.revokeObjectURL(url);
+        if (!optimized) return reject(new Error("Falha ao otimizar a imagem da migracao."));
+        resolve(optimized);
+      }, "image/jpeg", 0.82);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Falha ao carregar o print antigo para migracao."));
+    };
+    image.src = url;
+  });
+}
+
 function setLoading(isLoading) {
   state.loading = Boolean(isLoading);
   [
@@ -576,6 +754,13 @@ function setLoading(isLoading) {
     els.memberPassword,
     els.memberRole,
     els.exportButton,
+    els.exportFarmPeriodButton,
+    els.exportRoutePeriodButton,
+    els.resetFarmMonthButton,
+    els.resetRouteMonthButton,
+    els.cleanupPeriodButton,
+    els.cleanupAllButton,
+    els.migrateLegacyPrintsButton,
     els.logoutButton,
     els.logoutTopButton,
   ].forEach((element) => {
@@ -628,21 +813,105 @@ function exportMembersExcel() {
 async function resetFarmCurrentMonth() {
   if (!isAdmin()) return;
   const month = getMonthRange(0);
-  const confirmed = window.confirm(`Limpar todos os registros da meta principal de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
-  if (!confirmed) return;
-  await deleteRecordsInMonth("registros", month.start, month.end);
-  await refreshData();
-  renderApp();
+  await cleanupHistory("farm", month.start, month.end, `Limpar todos os registros da meta principal de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
 }
 
 async function resetRouteCurrentMonth() {
   if (!isAdmin()) return;
   const month = getMonthRange(0);
-  const confirmed = window.confirm(`Limpar todos os registros da rota de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
+  await cleanupHistory("route", month.start, month.end, `Limpar todos os registros da rota de ${month.prettyLabel}? Os membros permanecem cadastrados.`);
+}
+
+async function cleanupSelectedPeriod() {
+  if (!isAdmin()) return;
+  clearMessage(els.cleanupMessage);
+  const range = getExportRange(els.cleanupStart.value, els.cleanupEnd.value);
+  if (!range) return showMessage(els.cleanupMessage, "Informe um periodo valido para limpeza.", "error");
+  const scope = els.cleanupScope.value;
+  const confirmed = window.confirm(`Limpar o historico selecionado de ${range.label.replaceAll("_", " ")}? Os membros cadastrados permanecem intactos.`);
   if (!confirmed) return;
-  await deleteRecordsInMonth("registros_rota", month.start, month.end);
-  await refreshData();
-  renderApp();
+  await cleanupHistory(scope, range.start, range.end);
+}
+
+async function cleanupAllHistory() {
+  if (!isAdmin()) return;
+  clearMessage(els.cleanupMessage);
+  const scope = els.cleanupScope.value;
+  const confirmed = window.confirm("Limpar todo o historico do escopo selecionado? Os membros cadastrados nao serao excluidos.");
+  if (!confirmed) return;
+  await cleanupHistory(scope, null, null);
+}
+
+async function migrateLegacyPrints() {
+  if (!isAdmin()) return;
+  clearMessage(els.migrationMessage);
+  const farmLegacy = state.records.filter((record) => isLegacyBase64Print(record.print));
+  const routeLegacy = state.routeRecords.filter((record) => isLegacyBase64Print(record.print));
+  const total = farmLegacy.length + routeLegacy.length;
+  if (!total) return showMessage(els.migrationMessage, "Nao ha prints antigos em base64 para migrar.", "success");
+
+  const confirmed = window.confirm(`Migrar ${total} print(s) antigo(s) para o Storage agora?`);
+  if (!confirmed) return;
+
+  try {
+    setLoading(true);
+    let migrated = 0;
+    for (const record of farmLegacy) {
+      const url = await migrateSingleLegacyPrint(record, "meta");
+      await supabasePatch("registros", { id: `eq.${record.id}` }, { print: url });
+      migrated += 1;
+      showMessage(els.migrationMessage, `Migrando prints antigos... ${migrated}/${total}`, "success");
+    }
+    for (const record of routeLegacy) {
+      const url = await migrateSingleLegacyPrint(record, "rota");
+      await supabasePatch("registros_rota", { id: `eq.${record.id}` }, { print: url });
+      migrated += 1;
+      showMessage(els.migrationMessage, `Migrando prints antigos... ${migrated}/${total}`, "success");
+    }
+    await refreshData();
+    showMessage(els.migrationMessage, `${total} print(s) antigo(s) migrado(s) para o Storage com sucesso.`, "success");
+    renderApp();
+  } catch (error) {
+    showMessage(els.migrationMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function cleanupHistory(scope, start, end, confirmationMessage = "") {
+  try {
+    setLoading(true);
+    if (confirmationMessage) {
+      const confirmed = window.confirm(confirmationMessage);
+      if (!confirmed) return;
+    }
+    const targets = getCleanupTargets(scope, start, end);
+    if (!targets.length) return showMessage(els.cleanupMessage, "Nao ha registros para limpar nesse filtro.", "error");
+    const storagePaths = targets.map((record) => getStoragePathFromPrintValue(record.print)).filter(Boolean);
+    if (storagePaths.length) await storageDelete(storagePaths);
+    const farmIds = targets.filter((record) => record.__scope === "farm").map((record) => record.id);
+    const routeIds = targets.filter((record) => record.__scope === "route").map((record) => record.id);
+    if (farmIds.length) await deleteRecordsByIds("registros", farmIds);
+    if (routeIds.length) await deleteRecordsByIds("registros_rota", routeIds);
+    await refreshData();
+    showMessage(els.cleanupMessage, "Historico limpo com sucesso. Os membros cadastrados foram preservados.", "success");
+    renderApp();
+  } catch (error) {
+    showMessage(els.cleanupMessage, getErrorMessage(error), "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
+function getCleanupTargets(scope, start, end) {
+  const items = [];
+  if (scope === "farm" || scope === "all") {
+    items.push(...state.records.filter((record) => isWithinOptionalRange(record.data, start, end)).map((record) => ({ ...record, __scope: "farm" })));
+  }
+  if (scope === "route" || scope === "all") {
+    items.push(...state.routeRecords.filter((record) => isWithinOptionalRange(record.data, start, end)).map((record) => ({ ...record, __scope: "route" })));
+  }
+  return items;
 }
 
 function downloadExcelCsv(filename, rows) {
@@ -738,6 +1007,11 @@ function getMonthRange(offset) {
 function isDateInRange(value, start, end) {
   const date = new Date(value);
   return date >= start && date < end;
+}
+function isWithinOptionalRange(value, start, end) {
+  if (!start || !end) return true;
+  const dateKey = toDateKey(value);
+  return dateKey >= getDateKey(start) && dateKey <= getDateKey(end);
 }
 function getLastThirtyDaysRange() {
   const end = new Date();
@@ -893,7 +1167,14 @@ function openNoticeModal(title, text) { els.noticeModalTitle.textContent = title
 function closeNoticeModal() { els.noticeModal.classList.add("hidden"); }
 function showMessage(element, message, type) { element.textContent = message; element.className = `form-message ${type}`; }
 function clearMessage(element) { element.textContent = ""; element.className = "form-message"; }
-function getErrorMessage(error) { const message = error?.message || ""; if (message.includes("relation") || message.includes("does not exist")) return "As tabelas do banco ainda nao existem. Execute o SQL inicial e a migracao de rota."; if (message.includes("Failed to fetch")) return "Falha de conexao com o Supabase."; return message || "Nao foi possivel concluir a operacao."; }
+function getErrorMessage(error) {
+  const message = error?.message || "";
+  if (message.includes("relation") || message.includes("does not exist")) return "As tabelas do banco ainda nao existem. Execute o SQL inicial e a migracao de rota.";
+  if (message.includes("Failed to fetch")) return "Falha de conexao com o Supabase.";
+  if (message.includes("Bucket not found") || message.includes("The resource was not found")) return "O bucket de imagens ainda nao existe. Rode o novo SQL do Storage no Supabase.";
+  if (message.includes("row-level security")) return "As permissoes do Storage ainda nao foram configuradas. Rode o novo SQL completo no Supabase.";
+  return message || "Nao foi possivel concluir a operacao.";
+}
 function fileToDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("Falha ao processar a imagem.")); reader.readAsDataURL(file); }); }
 function formatDate(date) { return date.toLocaleDateString("pt-BR"); }
 function formatDateTime(date) { return date.toLocaleString("pt-BR"); }

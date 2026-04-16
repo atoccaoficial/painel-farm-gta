@@ -116,6 +116,45 @@ create index if not exists idx_registros_data on public.registros(data desc);
 create index if not exists idx_registros_rota_usuario on public.registros_rota(usuario);
 create index if not exists idx_registros_rota_data on public.registros_rota(data desc);
 
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'farm-prints',
+  'farm-prints',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "farm_prints_select" on storage.objects;
+drop policy if exists "farm_prints_insert" on storage.objects;
+drop policy if exists "farm_prints_update" on storage.objects;
+drop policy if exists "farm_prints_delete" on storage.objects;
+
+create policy "farm_prints_select"
+on storage.objects for select
+to anon
+using (bucket_id = 'farm-prints');
+
+create policy "farm_prints_insert"
+on storage.objects for insert
+to anon
+with check (bucket_id = 'farm-prints');
+
+create policy "farm_prints_update"
+on storage.objects for update
+to anon
+using (bucket_id = 'farm-prints')
+with check (bucket_id = 'farm-prints');
+
+create policy "farm_prints_delete"
+on storage.objects for delete
+to anon
+using (bucket_id = 'farm-prints');
+
 insert into public.usuarios (nome, usuario, senha, tipo)
 select 'Administrador', 'admin', '123456', 'admin'
 where not exists (

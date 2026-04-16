@@ -538,6 +538,63 @@
                 </div>
               </section>
             </section>
+
+            <section class="card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Arquivos e limpeza</span>
+                  <h3>Storage e historico</h3>
+                </div>
+                <span class="badge badge-info">Sem excluir membros</span>
+              </div>
+
+              <div class="export-toolbar">
+                <label>
+                  Escopo
+                  <select id="cleanupScope">
+                    <option value="farm">Limpar historico da meta</option>
+                    <option value="route">Limpar historico da rota</option>
+                    <option value="all">Limpar ambos</option>
+                  </select>
+                </label>
+                <label>
+                  De
+                  <input id="cleanupStart" type="date" />
+                </label>
+                <label>
+                  Ate
+                  <input id="cleanupEnd" type="date" />
+                </label>
+              </div>
+
+              <div class="danger-actions">
+                <button id="cleanupPeriodButton" class="btn btn-danger" type="button">Limpar por periodo</button>
+                <button id="cleanupAllButton" class="btn btn-danger" type="button">Limpar tudo</button>
+              </div>
+
+              <p id="cleanupMessage" class="form-message" aria-live="polite"></p>
+            </section>
+
+            <section class="card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">Migracao</span>
+                  <h3>Levar prints antigos para o Storage</h3>
+                </div>
+                <span class="badge badge-info">Somente adm</span>
+              </div>
+
+              <p class="muted">
+                Move os prints antigos salvos em base64 nas tabelas para o bucket
+                <strong>farm-prints</strong> e atualiza o banco para guardar so a URL.
+              </p>
+
+              <div class="danger-actions">
+                <button id="migrateLegacyPrintsButton" class="btn btn-secondary" type="button">Migrar prints antigos</button>
+              </div>
+
+              <p id="migrationMessage" class="form-message" aria-live="polite"></p>
+            </section>
           </section>
         </div>
 
