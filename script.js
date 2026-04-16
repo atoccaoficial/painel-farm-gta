@@ -494,15 +494,13 @@ function collectRouteProducts() {
 async function fetchUsers() { return await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", order: "nome.asc" }); }
 async function fetchRecords() { return await supabaseSelect("registros", { select: "id,usuario,farm,materiais,dinheiro,restantes,data,status", order: "data.desc" }); }
 async function fetchRouteRecords() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,produtos,total_entregues,data,status", order: "data.desc" }); } catch { return []; } }
-async function fetchLegacyFarmPrints() { return await supabaseSelect("registros", { select: "id,usuario,print,data", order: "data.desc" }); }
-async function fetchLegacyRoutePrints() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,print,data", order: "data.desc" }); } catch { return []; } }
 async function fetchRecordPrint(table, id) {
   const rows = await supabaseSelect(table, {
-    select: "id,print",
+    select: "id,usuario,data,print",
     filters: { id: `eq.${id}` },
     limit: 1,
   });
-  return rows[0]?.print || "";
+  return rows[0] || null;
 }
 async function loginUser(usuario, senha) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { usuario: `eq.${usuario}`, senha: `eq.${senha}` }, limit: 1 }); return rows[0] || null; }
 async function getUserById(id) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { id: `eq.${id}` }, limit: 1 }); return rows[0] || null; }
@@ -857,30 +855,28 @@ async function migrateLegacyPrints() {
   clearMessage(els.migrationMessage);
   try {
     setLoading(true);
-    const [farmRecordsWithPrint, routeRecordsWithPrint] = await Promise.all([fetchLegacyFarmPrints(), fetchLegacyRoutePrints()]);
-    const farmLegacy = farmRecordsWithPrint.filter((record) => isLegacyBase64Print(record.print));
-    const routeLegacy = routeRecordsWithPrint.filter((record) => isLegacyBase64Print(record.print));
-    const total = farmLegacy.length + routeLegacy.length;
-    if (!total) return showMessage(els.migrationMessage, "Nao ha prints antigos em base64 para migrar.", "success");
+    const farmCandidates = state.records.map((record) => ({ id: record.id, table: "registros", category: "meta" }));
+    const routeCandidates = state.routeRecords.map((record) => ({ id: record.id, table: "registros_rota", category: "rota" }));
+    const candidates = [...farmCandidates, ...routeCandidates];
+    if (!candidates.length) return showMessage(els.migrationMessage, "Nao ha registros para verificar na migracao.", "error");
 
-    const confirmed = window.confirm(`Migrar ${total} print(s) antigo(s) para o Storage agora?`);
+    const confirmed = window.confirm(`Verificar e migrar prints antigos para o Storage? Esse processo pode levar alguns minutos.`);
     if (!confirmed) return;
 
     let migrated = 0;
-    for (const record of farmLegacy) {
-      const url = await migrateSingleLegacyPrint(record, "meta");
-      await supabasePatch("registros", { id: `eq.${record.id}` }, { print: url });
+    let checked = 0;
+    for (const candidate of candidates) {
+      checked += 1;
+      showMessage(els.migrationMessage, `Verificando prints antigos... ${checked}/${candidates.length}`, "success");
+      const record = await fetchRecordPrint(candidate.table, candidate.id);
+      if (!record || !isLegacyBase64Print(record.print)) continue;
+      const url = await migrateSingleLegacyPrint(record, candidate.category);
+      await supabasePatch(candidate.table, { id: `eq.${record.id}` }, { print: url });
       migrated += 1;
-      showMessage(els.migrationMessage, `Migrando prints antigos... ${migrated}/${total}`, "success");
-    }
-    for (const record of routeLegacy) {
-      const url = await migrateSingleLegacyPrint(record, "rota");
-      await supabasePatch("registros_rota", { id: `eq.${record.id}` }, { print: url });
-      migrated += 1;
-      showMessage(els.migrationMessage, `Migrando prints antigos... ${migrated}/${total}`, "success");
+      showMessage(els.migrationMessage, `Migrados ${migrated} print(s). Verificados ${checked}/${candidates.length}.`, "success");
     }
     await refreshData();
-    showMessage(els.migrationMessage, `${total} print(s) antigo(s) migrado(s) para o Storage com sucesso.`, "success");
+    showMessage(els.migrationMessage, migrated ? `${migrated} print(s) antigo(s) migrado(s) para o Storage com sucesso.` : "Nao havia prints antigos em base64 para migrar.", "success");
     renderApp();
   } catch (error) {
     showMessage(els.migrationMessage, getErrorMessage(error), "error");
