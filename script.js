@@ -404,13 +404,13 @@ function renderFarm() {
   const own = getLastThirtyDaysRecords(getCanonicalFarmRecords().filter((r) => String(r.usuario) === String(state.currentUser.id))).sort((a, b) => new Date(b.data) - new Date(a.data));
   const ownEquivalentDays = own.reduce((total, record) => total + getFarmDeliveryEquivalent(record), 0);
   els.memberHistorySummary.textContent = `${ownEquivalentDays} dia(s) de entrega nos ultimos 30 dias`;
-  els.memberHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(6, "Nenhuma entrega encontrada nos ultimos 30 dias.");
+  els.memberHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-record-id="${escapeHtml(String(r.id))}" data-record-table="registros">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(6, "Nenhuma entrega encontrada nos ultimos 30 dias.");
   renderAdminFarm();
 }
 
 function renderAdminFarm() {
   const records = [...getCanonicalFarmRecords()].sort((a, b) => new Date(b.data) - new Date(a.data));
-  els.recordsBody.innerHTML = records.length ? records.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(7, "Nenhum registro encontrado.");
+  els.recordsBody.innerHTML = records.length ? records.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(r.farm)}</td><td>${escapeHtml(formatMoney(r.dinheiro))}</td><td>${escapeHtml(String(r.restantes))}</td><td><button class="thumb-button" type="button" data-record-id="${escapeHtml(String(r.id))}" data-record-table="registros">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(7, "Nenhum registro encontrado.");
   const ranking = computeRanking(getCurrentWeekRecords()).filter((i) => i.deliveries > 0);
   els.rankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} dia(s) de entrega registrados na semana atual.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas nesta semana.</div>`;
   const missing = getPendingMembers();
@@ -436,9 +436,9 @@ function renderRoute() {
   els.routeStatusBody.innerHTML = routeRows.length ? routeRows.map((row) => `<tr><td>${escapeHtml(row.nome)}</td><td><span class="status-chip ${row.statusClass}">${escapeHtml(row.status)}</span></td><td>${escapeHtml(row.produtos)}</td><td>${escapeHtml(row.data)}</td></tr>`).join("") : emptyRow(4, "Nenhum membro cadastrado.");
   els.routeMissingList.innerHTML = routeMissing.length ? routeMissing.map((u) => `<article class="stack-item"><strong>${escapeHtml(u.nome)}</strong><p>Ainda nao registrou a rota do dia.</p></article>`).join("") : `<div class="empty-state">${isRequiredDay() ? "Todos os membros entregaram a rota hoje." : "Hoje nao ha pendencias obrigatorias na rota."}</div>`;
   els.routeHistorySummary.textContent = `${own.length} rota(s) nos ultimos 30 dias`;
-  els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada nos ultimos 30 dias.");
+  els.routeHistoryBody.innerHTML = own.length ? own.map((r) => `<tr><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-record-id="${escapeHtml(String(r.id))}" data-record-table="registros_rota">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td></tr>`).join("") : emptyRow(5, "Nenhuma rota encontrada nos ultimos 30 dias.");
   const routeRecords = [...getCanonicalRouteRecords()].sort((a, b) => new Date(b.data) - new Date(a.data));
-  els.routeRecordsBody.innerHTML = routeRecords.length ? routeRecords.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-image="${encodeURIComponent(r.print)}">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(6, "Nenhum registro de rota encontrado.");
+  els.routeRecordsBody.innerHTML = routeRecords.length ? routeRecords.map((r) => `<tr><td>${escapeHtml(getUserName(r.usuario))}</td><td>${escapeHtml(formatRouteProducts(r.produtos))}</td><td>${escapeHtml(String(r.total_entregues || 0))}</td><td><button class="thumb-button" type="button" data-record-id="${escapeHtml(String(r.id))}" data-record-table="registros_rota">Ver print</button></td><td><span class="status-chip status-delivered">${escapeHtml(r.status)}</span></td><td>${escapeHtml(formatDateTime(new Date(r.data)))}</td></tr>`).join("") : emptyRow(6, "Nenhum registro de rota encontrado.");
   const ranking = computeRouteRanking(getCurrentWeekRouteRecords()).filter((i) => i.deliveries > 0);
   els.routeRankingList.innerHTML = ranking.length ? ranking.map((i, idx) => `<article class="stack-item ranking-row"><span class="ranking-position">${idx + 1}o</span><div><strong>${escapeHtml(i.memberName)}</strong><p>${i.deliveries} item(ns) entregues na rota esta semana.</p></div></article>`).join("") : `<div class="empty-state">Ainda nao houve entregas de rota nesta semana.</div>`;
 }
@@ -492,8 +492,16 @@ function collectRouteProducts() {
 }
 
 async function fetchUsers() { return await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", order: "nome.asc" }); }
-async function fetchRecords() { return await supabaseSelect("registros", { select: "id,usuario,farm,materiais,dinheiro,restantes,print,data,status", order: "data.desc" }); }
-async function fetchRouteRecords() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,produtos,total_entregues,print,data,status", order: "data.desc" }); } catch { return []; } }
+async function fetchRecords() { return await supabaseSelect("registros", { select: "id,usuario,farm,materiais,dinheiro,restantes,data,status", order: "data.desc" }); }
+async function fetchRouteRecords() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,produtos,total_entregues,data,status", order: "data.desc" }); } catch { return []; } }
+async function fetchRecordPrint(table, id) {
+  const rows = await supabaseSelect(table, {
+    select: "id,print",
+    filters: { id: `eq.${id}` },
+    limit: 1,
+  });
+  return rows[0]?.print || "";
+}
 async function loginUser(usuario, senha) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { usuario: `eq.${usuario}`, senha: `eq.${senha}` }, limit: 1 }); return rows[0] || null; }
 async function getUserById(id) { const rows = await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", filters: { id: `eq.${id}` }, limit: 1 }); return rows[0] || null; }
 async function saveMember(editingId, payload) { if (editingId) return supabasePatch("usuarios", { id: `eq.${editingId}` }, payload); return supabaseInsert("usuarios", payload); }
@@ -1160,7 +1168,27 @@ function iterateDates(start, end) {
 }
 function getUserName(userId) { return state.users.find((u) => String(u.id) === String(userId))?.nome || "Usuario removido"; }
 function updateFileLabel(input, target) { const file = input.files[0]; target.textContent = file ? file.name : "Nenhum arquivo selecionado"; }
-function handleImageButtons(event) { const button = event.target.closest("[data-image]"); if (button) openModal(decodeURIComponent(button.dataset.image)); }
+async function handleImageButtons(event) {
+  const imageButton = event.target.closest("[data-image]");
+  if (imageButton) return openModal(decodeURIComponent(imageButton.dataset.image));
+
+  const recordButton = event.target.closest("[data-record-id]");
+  if (!recordButton) return;
+
+  try {
+    setLoading(true);
+    const printUrl = await fetchRecordPrint(recordButton.dataset.recordTable, recordButton.dataset.recordId);
+    if (!printUrl) {
+      openNoticeModal("Print indisponivel", "Esse registro nao possui print disponivel para visualizacao.");
+      return;
+    }
+    openModal(printUrl);
+  } catch (error) {
+    openNoticeModal("Falha ao abrir print", getErrorMessage(error));
+  } finally {
+    setLoading(false);
+  }
+}
 function openModal(src) { els.modalImage.src = src; els.imageModal.classList.remove("hidden"); }
 function closeModal() { els.modalImage.src = ""; els.imageModal.classList.add("hidden"); }
 function openNoticeModal(title, text) { els.noticeModalTitle.textContent = title; els.noticeModalText.textContent = text; els.noticeModal.classList.remove("hidden"); }
