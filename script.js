@@ -494,6 +494,8 @@ function collectRouteProducts() {
 async function fetchUsers() { return await supabaseSelect("usuarios", { select: "id,nome,usuario,senha,tipo,data_criacao", order: "nome.asc" }); }
 async function fetchRecords() { return await supabaseSelect("registros", { select: "id,usuario,farm,materiais,dinheiro,restantes,data,status", order: "data.desc" }); }
 async function fetchRouteRecords() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,produtos,total_entregues,data,status", order: "data.desc" }); } catch { return []; } }
+async function fetchLegacyFarmPrints() { return await supabaseSelect("registros", { select: "id,usuario,print,data", order: "data.desc" }); }
+async function fetchLegacyRoutePrints() { try { return await supabaseSelect("registros_rota", { select: "id,usuario,print,data", order: "data.desc" }); } catch { return []; } }
 async function fetchRecordPrint(table, id) {
   const rows = await supabaseSelect(table, {
     select: "id,print",
@@ -853,16 +855,17 @@ async function cleanupAllHistory() {
 async function migrateLegacyPrints() {
   if (!isAdmin()) return;
   clearMessage(els.migrationMessage);
-  const farmLegacy = state.records.filter((record) => isLegacyBase64Print(record.print));
-  const routeLegacy = state.routeRecords.filter((record) => isLegacyBase64Print(record.print));
-  const total = farmLegacy.length + routeLegacy.length;
-  if (!total) return showMessage(els.migrationMessage, "Nao ha prints antigos em base64 para migrar.", "success");
-
-  const confirmed = window.confirm(`Migrar ${total} print(s) antigo(s) para o Storage agora?`);
-  if (!confirmed) return;
-
   try {
     setLoading(true);
+    const [farmRecordsWithPrint, routeRecordsWithPrint] = await Promise.all([fetchLegacyFarmPrints(), fetchLegacyRoutePrints()]);
+    const farmLegacy = farmRecordsWithPrint.filter((record) => isLegacyBase64Print(record.print));
+    const routeLegacy = routeRecordsWithPrint.filter((record) => isLegacyBase64Print(record.print));
+    const total = farmLegacy.length + routeLegacy.length;
+    if (!total) return showMessage(els.migrationMessage, "Nao ha prints antigos em base64 para migrar.", "success");
+
+    const confirmed = window.confirm(`Migrar ${total} print(s) antigo(s) para o Storage agora?`);
+    if (!confirmed) return;
+
     let migrated = 0;
     for (const record of farmLegacy) {
       const url = await migrateSingleLegacyPrint(record, "meta");
